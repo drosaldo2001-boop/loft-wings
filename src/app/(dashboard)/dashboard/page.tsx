@@ -156,7 +156,8 @@ export default function DashboardPage() {
 
     // Top meseros hoy
     const meseroMap: Record<string, { nombre: string; ventas: number; propinas: number; cuentas: number }> = {}
-    ;(cuentasMeseros ?? []).forEach((c: { total: number; propina: number; usuarios: { nombre: string } | null }) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(cuentasMeseros ?? []).forEach((c: any) => {
       const nombre = c.usuarios?.nombre ?? 'Sin nombre'
       if (!meseroMap[nombre]) meseroMap[nombre] = { nombre, ventas: 0, propinas: 0, cuentas: 0 }
       meseroMap[nombre].ventas += c.total ?? 0
