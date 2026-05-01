@@ -195,7 +195,7 @@ export default function MeseroPage() {
 
   function clickAgregar(producto: Producto) {
     const max = maxSalsasParaProducto(producto.nombre)
-    if ((producto.categoria === 'alitas' || producto.categoria === 'boneless') && max > 0) {
+    if (((producto.categoria as string) === 'alitas' || (producto.categoria as string) === 'boneless') && max > 0) {
       setSalsasSeleccionadas([])
       setModalSalsas({ producto, maxSalsas: max })
     } else {
