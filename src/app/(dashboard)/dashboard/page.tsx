@@ -168,7 +168,8 @@ export default function DashboardPage() {
 
     // Tiempos reales promedio por producto
     const tiemposReales: Record<string, number[]> = {}
-    ;(pedidosTiempos ?? []).forEach((p: { producto_id: string; tiempo_inicio: string; tiempo_listo: string; productos: { nombre: string } | null }) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(pedidosTiempos ?? []).forEach((p: any) => {
       if (!p.tiempo_inicio || !p.tiempo_listo) return
       const mins = (new Date(p.tiempo_listo).getTime() - new Date(p.tiempo_inicio).getTime()) / 60000
       if (mins > 0 && mins < 120) {
@@ -180,7 +181,8 @@ export default function DashboardPage() {
 
     // Unidades vendidas por producto en 7 días
     const unidades7d: Record<string, { cantidad: number; ingreso: number; costo_total: number }> = {}
-    ;(pedidosSemana ?? []).forEach((p: { cantidad: number; precio_unitario: number; productos: { nombre: string; costo: number } | null }) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(pedidosSemana ?? []).forEach((p: any) => {
       const nombre = p.productos?.nombre ?? 'N/A'
       if (!unidades7d[nombre]) unidades7d[nombre] = { cantidad: 0, ingreso: 0, costo_total: 0 }
       unidades7d[nombre].cantidad += p.cantidad
