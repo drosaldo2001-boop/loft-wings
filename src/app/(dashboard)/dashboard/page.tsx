@@ -367,7 +367,7 @@ export default function DashboardPage() {
                 <XAxis dataKey="dia" stroke="#6b7280" fontSize={12} />
                 <YAxis stroke="#6b7280" fontSize={12} tickFormatter={v => `$${v}`} />
                 <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '12px' }}
-                  formatter={(v: number) => [`$${v.toFixed(0)}`, 'Ventas']} />
+                  formatter={(v: any) => [`$${v.toFixed(0)}`, 'Ventas']} />
                 <Bar dataKey="total" fill="#f97316" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -387,7 +387,7 @@ export default function DashboardPage() {
                     ))}
                   </Pie>
                   <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '12px' }}
-                    formatter={(v: number) => [`$${v.toFixed(0)}`]} />
+                    formatter={(v: any) => [`$${v.toFixed(0)}`]} />
                   <Legend formatter={(v) => <span className="text-gray-300 text-xs capitalize">{v}</span>} />
                 </PieChart>
               </ResponsiveContainer>
@@ -447,7 +447,7 @@ export default function DashboardPage() {
                   <YAxis type="category" dataKey="nombre" width={160} stroke="#6b7280" fontSize={11} tick={{ fill: '#d1d5db' }} />
                   <Tooltip
                     contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '12px' }}
-                    formatter={(v: number, _: string, props: { payload: AnalisisProducto }) => [
+                    formatter={(v: any, _: any, props: any) => [
                       `${v.toFixed(1)}% — $${props.payload.margen.toFixed(2)} por pieza`,
                       'Margen'
                     ]}
@@ -456,7 +456,7 @@ export default function DashboardPage() {
                     {top12.map((entry, i) => (
                       <Cell key={i} fill={entry.margen_pct >= 60 ? '#22c55e' : entry.margen_pct >= 40 ? '#f97316' : '#ef4444'} />
                     ))}
-                    <LabelList dataKey="margen_pct" position="right" formatter={(v: number) => `${v.toFixed(0)}%`} style={{ fill: '#9ca3af', fontSize: 11 }} />
+                    <LabelList dataKey="margen_pct" position="right" formatter={(v: any) => `${v.toFixed(0)}%`} style={{ fill: '#9ca3af', fontSize: 11 }} />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
@@ -481,7 +481,7 @@ export default function DashboardPage() {
                     <YAxis stroke="#6b7280" fontSize={11} tickFormatter={v => `$${v}`} />
                     <Tooltip
                       contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '12px' }}
-                      formatter={(v: number, name: string) => [
+                      formatter={(v: any, name: any) => [
                         `$${v.toFixed(2)}`,
                         name === 'ganancia_7d' ? 'Ganancia' : 'Ingreso bruto'
                       ]}
@@ -506,7 +506,7 @@ export default function DashboardPage() {
                     <YAxis stroke="#6b7280" fontSize={11} tickFormatter={v => `$${v}`} />
                     <Tooltip
                       contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '12px' }}
-                      formatter={(v: number) => [`$${v.toFixed(2)}`]}
+                      formatter={(v: any) => [`$${v.toFixed(2)}`]}
                     />
                     <Legend formatter={v => <span className="text-gray-300 text-xs">{v === 'costo' ? 'Costo' : 'Precio venta'}</span>} />
                     <Bar dataKey="precio" fill="#f97316" radius={[4, 4, 0, 0]} name="precio" />
@@ -530,7 +530,7 @@ export default function DashboardPage() {
                       <YAxis stroke="#6b7280" fontSize={11} tickFormatter={v => `${v}m`} />
                       <Tooltip
                         contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '12px' }}
-                        formatter={(v: number) => [`${v.toFixed(1)} min`]}
+                        formatter={(v: any) => [`${v.toFixed(1)} min`]}
                       />
                       <Legend formatter={v => <span className="text-gray-300 text-xs">{v === 'tiempo_estimado' ? 'Estimado' : 'Real'}</span>} />
                       <Bar dataKey="tiempo_estimado" fill="#6b7280" radius={[4, 4, 0, 0]} name="tiempo_estimado" />
