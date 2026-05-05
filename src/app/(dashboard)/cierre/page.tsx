@@ -174,26 +174,38 @@ export default function CierrePage() {
   }
 
   async function abrirTurno(empleadoId: string) {
-    if (!admin) return
+    if (!admin) { alert('❌ No hay sesión activa'); return }
     setProcesando(empleadoId)
-    await supabase.from('turnos').insert({
-      usuario_id: empleadoId,
-      inicio: new Date().toISOString(),
-      abierto_por: admin.id,
-    })
-    await cargar()
-    setProcesando(null)
+    try {
+      const { error } = await supabase.from('turnos').insert({
+        usuario_id: empleadoId,
+        inicio: new Date().toISOString(),
+        abierto_por: admin.id,
+      })
+      if (error) alert(`❌ Error al abrir turno: ${error.message}`)
+      else await cargar()
+    } catch (e: any) {
+      alert(`❌ Excepción: ${e?.message ?? e}`)
+    } finally {
+      setProcesando(null)
+    }
   }
 
   async function cerrarTurno(turnoId: string, empleadoId: string) {
-    if (!admin) return
+    if (!admin) { alert('❌ No hay sesión activa'); return }
     setProcesando(empleadoId)
-    await supabase.from('turnos').update({
-      fin: new Date().toISOString(),
-      cerrado_por: admin.id,
-    }).eq('id', turnoId)
-    await cargar()
-    setProcesando(null)
+    try {
+      const { error } = await supabase.from('turnos').update({
+        fin: new Date().toISOString(),
+        cerrado_por: admin.id,
+      }).eq('id', turnoId)
+      if (error) alert(`❌ Error al cerrar turno: ${error.message}`)
+      else await cargar()
+    } catch (e: any) {
+      alert(`❌ Excepción: ${e?.message ?? e}`)
+    } finally {
+      setProcesando(null)
+    }
   }
 
   // Totales resumen
