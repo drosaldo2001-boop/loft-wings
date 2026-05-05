@@ -135,6 +135,7 @@ export default function MeseroPage() {
       impuesto: 0,
       total: 0,
       plataforma: 'local',
+      num_personas: numPersonas,
     }).select().single()
 
     if (errCuenta || !cuenta) {
@@ -177,11 +178,13 @@ export default function MeseroPage() {
       impuesto: 0,
       total: 0,
       plataforma: 'local',
+      num_personas: numPersonas,
     }).select().single()
 
     if (cuenta) {
       setCuentaActiva(cuenta)
       setNombreCuenta('')
+      setNumPersonas(1)
       setVista('menu')
     }
     setCargando(false)
@@ -491,7 +494,7 @@ export default function MeseroPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-medium text-white">{cuenta.nombre_cuenta || `Cuenta ${i + 1}`}</p>
-                      <p className="text-xs text-gray-500">Abierta {new Date(cuenta.created_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</p>
+                      <p className="text-xs text-gray-500">Abierta {new Date(cuenta.created_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}{cuenta.num_personas > 0 ? ` · 👥 ${cuenta.num_personas}` : ''}</p>
                     </div>
                     <div className="text-right">
                       <p className="text-orange-400 font-bold">${(cuenta.total ?? 0).toFixed(2)}</p>
@@ -512,6 +515,14 @@ export default function MeseroPage() {
               placeholder={`Cuenta ${cuentasEnMesa.length + 1}, Nombre del cliente...`}
               className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-500"
             />
+            <div className="bg-gray-900 rounded-xl p-3 space-y-2">
+              <label className="text-xs text-gray-400">Número de personas</label>
+              <div className="flex items-center gap-3">
+                <button onClick={() => setNumPersonas(p => Math.max(1, p - 1))} className="w-9 h-9 rounded-lg bg-gray-700 text-white text-lg font-bold hover:bg-gray-600 active:scale-95 transition">−</button>
+                <span className="text-xl font-bold text-white w-10 text-center">{numPersonas}</span>
+                <button onClick={() => setNumPersonas(p => p + 1)} className="w-9 h-9 rounded-lg bg-gray-700 text-white text-lg font-bold hover:bg-gray-600 active:scale-95 transition">+</button>
+              </div>
+            </div>
             <button
               onClick={crearNuevaCuenta}
               disabled={cargando}
