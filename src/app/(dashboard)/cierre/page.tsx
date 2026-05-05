@@ -17,6 +17,7 @@ interface PedidoPendiente {
   id: string
   cantidad: number
   estado: string
+  notas: string | null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   productos: any
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -70,7 +71,7 @@ export default function CierrePage() {
         if (esCocina) {
           const { data: pend } = await supabase
             .from('pedidos')
-            .select('id, cantidad, estado, productos!pedidos_producto_id_fkey(nombre), cuentas!pedidos_cuenta_id_fkey(mesas!cuentas_mesa_id_fkey(nombre))')
+            .select('id, cantidad, estado, notas, productos!pedidos_producto_id_fkey(nombre), cuentas!pedidos_cuenta_id_fkey(mesas!cuentas_mesa_id_fkey(nombre))')
             .in('estado', ['nuevo', 'en_preparacion'])
             .order('created_at')
           setPedidosPendientes((pend ?? []) as unknown as PedidoPendiente[])
