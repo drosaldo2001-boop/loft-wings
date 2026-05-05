@@ -46,6 +46,7 @@ export default function MeseroPage() {
   const [carrito, setCarrito] = useState<PedidoItem[]>([])
   const [vista, setVista] = useState<Vista>('mesas')
   const [nombreCuenta, setNombreCuenta] = useState('')
+  const [numPersonas, setNumPersonas] = useState(1)
   const [cargando, setCargando] = useState(false)
   const [modalSalsas, setModalSalsas] = useState<{ producto: Producto; maxSalsas: number } | null>(null)
   const [salsasSeleccionadas, setSalsasSeleccionadas] = useState<string[]>([])
@@ -106,6 +107,7 @@ export default function MeseroPage() {
     setMesaActiva(mesa)
     if (mesa.estado === 'disponible') {
       setNombreCuenta('')
+      setNumPersonas(1)
       setVista('abrirMesa')
     } else if (mesa.estado === 'ocupada') {
       const { data: cuentas } = await supabase
@@ -145,6 +147,7 @@ export default function MeseroPage() {
       estado: 'ocupada',
       mesero_id: user.id,
       cuenta_id: cuenta.id,
+      num_personas: numPersonas,
     }).eq('id', mesaActiva.id)
 
     setCuentaActiva(cuenta)
@@ -405,7 +408,9 @@ export default function MeseroPage() {
               >
                 <p className="font-bold text-white">{mesa.nombre}</p>
                 <p className="text-xs text-gray-400">{mesa.zona}</p>
-                <p className="text-xs text-gray-500 mt-1">{mesa.capacidad} personas</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {(mesa as any).num_personas > 0 ? `👥 ${(mesa as any).num_personas} personas` : `${mesa.capacidad} cap.`}
+                </p>
                 <span className={`text-xs mt-2 inline-block ${
                   mesa.estado === 'disponible' ? 'text-green-400' :
                   mesa.estado === 'ocupada' ? 'text-red-400' :
@@ -432,6 +437,14 @@ export default function MeseroPage() {
             <p className="text-gray-400 text-sm">{mesaActiva.zona} · {mesaActiva.capacidad} personas</p>
           </div>
 
+          <div className="bg-gray-900 rounded-2xl p-4 space-y-3">
+            <label className="text-sm text-gray-400">Número de personas</label>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setNumPersonas(p => Math.max(1, p - 1))} className="w-10 h-10 rounded-xl bg-gray-700 text-white text-xl font-bold hover:bg-gray-600 active:scale-95 transition">−</button>
+              <span className="text-2xl font-bold text-white w-12 text-center">{numPersonas}</span>
+              <button onClick={() => setNumPersonas(p => p + 1)} className="w-10 h-10 rounded-xl bg-gray-700 text-white text-xl font-bold hover:bg-gray-600 active:scale-95 transition">+</button>
+            </div>
+          </div>
           <div className="bg-gray-900 rounded-2xl p-4 space-y-3">
             <label className="text-sm text-gray-400">Nombre de la cuenta <span className="text-gray-600">(opcional)</span></label>
             <input

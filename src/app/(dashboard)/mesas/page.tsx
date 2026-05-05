@@ -127,7 +127,9 @@ export default function MesasPage() {
               <div className="text-2xl mb-2">{ESTADO_ICONS[mesa.estado as EstadoMesa]}</div>
               <p className="font-bold text-white text-sm">{mesa.nombre}</p>
               <p className="text-xs text-gray-500">{mesa.zona}</p>
-              <p className="text-xs text-gray-400 mt-1">{mesa.capacidad} personas</p>
+              <p className="text-xs text-gray-400 mt-1">
+                {(mesa as any).num_personas > 0 ? `👥 ${(mesa as any).num_personas}` : `${mesa.capacidad} cap.`}
+              </p>
               <div className={`mt-2 inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full ${config.text} bg-current/10`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${config.color} mr-1`} />
                 {config.label}
