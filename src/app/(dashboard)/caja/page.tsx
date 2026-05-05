@@ -71,6 +71,28 @@ export default function CajaPage() {
     return () => { supabase.removeChannel(channel) }
   }, [fetchCuentas])
 
+  async function cancelarCuenta() {
+    if (!cuentaActiva) return
+    if (!window.confirm(`¿Cancelar la cuenta "${cuentaActiva.nombre_cuenta ?? cuentaActiva.mesas?.nombre}"? Los pedidos se marcarán como cancelados.`)) return
+    await supabase.from('pedidos').update({ estado: 'cancelado' }).eq('cuenta_id', cuentaActiva.id)
+    await supabase.from('cuentas').update({ estado: 'cancelada' }).eq('id', cuentaActiva.id)
+    if (cuentaActiva.mesas) {
+      const { data: mesaData } = await supabase.from('mesas').select('id').eq('nombre', cuentaActiva.mesas.nombre).single()
+      if (mesaData) {
+        const { data: restantes } = await supabase.from('cuentas').select('id').eq('mesa_id', mesaData.id).eq('estado', 'abierta')
+        if (!restantes || restantes.length === 0) {
+          await supabase.from('mesas').update({ estado: 'disponible', cuenta_id: null, mesero_id: null, num_personas: 0 }).eq('id', mesaData.id)
+        }
+      }
+    }
+    setCuentaActiva(null)
+    setDescuento(0)
+    setPropina(0)
+    setEfectivoRecibido('')
+    setVistaTicket(false)
+    fetchCuentas()
+  }
+
   async function cerrarCuenta() {
     if (!cuentaActiva) return
     const subtotal = cuentaActiva.pedidos.filter(p => p.estado !== 'cancelado').reduce((s, p) => s + p.precio_unitario * p.cantidad, 0)
@@ -344,6 +366,12 @@ export default function CajaPage() {
                       ✅ Cobrar ${totalFinal.toFixed(2)}
                     </button>
                   </div>
+                  <button
+                    onClick={cancelarCuenta}
+                    className="w-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-medium py-3 rounded-xl transition active:scale-95 text-sm"
+                  >
+                    🚫 Cancelar Cuenta
+                  </button>
                 </>
               )}
             </div>

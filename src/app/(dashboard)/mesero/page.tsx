@@ -164,6 +164,23 @@ export default function MeseroPage() {
     setVista('menu')
   }
 
+  async function cancelarMesa() {
+    if (!mesaActiva) return
+    if (!window.confirm(`¿Cancelar la mesa ${mesaActiva.nombre}? Se cancelarán todas las cuentas y pedidos activos.`)) return
+    setCargando(true)
+    const { data: cuentasAbiertas } = await supabase.from('cuentas').select('id').eq('mesa_id', mesaActiva.id).eq('estado', 'abierta')
+    if (cuentasAbiertas && cuentasAbiertas.length > 0) {
+      const ids = cuentasAbiertas.map(c => c.id)
+      await supabase.from('pedidos').update({ estado: 'cancelado' }).in('cuenta_id', ids)
+      await supabase.from('cuentas').update({ estado: 'cancelada' }).in('id', ids)
+    }
+    await supabase.from('mesas').update({ estado: 'disponible', cuenta_id: null, mesero_id: null, num_personas: 0 }).eq('id', mesaActiva.id)
+    setVista('mesas')
+    setMesaActiva(null)
+    setCargando(false)
+    fetchData()
+  }
+
   async function crearNuevaCuenta() {
     if (!mesaActiva || !user) return
     setCargando(true)
@@ -465,6 +482,12 @@ export default function MeseroPage() {
           >
             {cargando ? 'Abriendo...' : '✅ Abrir Mesa y Tomar Pedido'}
           </button>
+          <button
+            onClick={() => { setVista('mesas'); setMesaActiva(null) }}
+            className="w-full bg-gray-800 hover:bg-gray-700 text-gray-400 font-medium py-3 rounded-xl transition active:scale-95 text-sm"
+          >
+            Cancelar
+          </button>
         </div>
       )}
 
@@ -505,6 +528,17 @@ export default function MeseroPage() {
               ))}
             </div>
           )}
+
+          {/* Cancelar mesa */}
+          <div className="pt-2">
+            <button
+              onClick={cancelarMesa}
+              disabled={cargando}
+              className="w-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-medium py-3 rounded-xl transition active:scale-95 disabled:opacity-50 text-sm"
+            >
+              🚫 Cancelar Mesa
+            </button>
+          </div>
 
           {/* Nueva cuenta */}
           <div className="space-y-3 pt-2 border-t border-gray-800">
