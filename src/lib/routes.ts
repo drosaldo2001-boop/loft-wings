@@ -19,5 +19,5 @@ export const NAV_ITEMS = [
   { href: '/delivery', label: 'Delivery', emoji: '🛵', roles: ['admin', 'gerente', 'cajero'] },
   { href: '/menu', label: 'Editar Menú', emoji: '🍽️', roles: ['admin', 'gerente'] },
   { href: '/promociones', label: 'Promociones', emoji: '🎉', roles: ['admin', 'gerente'] },
-  { href: '/cierre', label: 'Cierre del Día', emoji: '🌙', roles: ['admin', 'gerente', 'mesero', 'cocina', 'cajero'] },
+  { href: '/cierre', label: 'Control Turnos', emoji: '🌙', roles: ['admin', 'gerente'] },
 ] as const
