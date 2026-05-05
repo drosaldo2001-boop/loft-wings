@@ -32,6 +32,7 @@ export interface Database {
           estado: EstadoMesa
           mesero_id: string | null
           cuenta_id: string | null
+          num_personas: number
           updated_at: string
         }
         Insert: Omit<Database['public']['Tables']['mesas']['Row'], 'id' | 'updated_at'>
@@ -70,6 +71,9 @@ export interface Database {
           plataforma: PlataformaDelivery
           notas: string | null
           factura_id: string | null
+          propina: number
+          num_personas: number
+          nombre_cuenta: string | null
           created_at: string
           cerrada_at: string | null
         }
