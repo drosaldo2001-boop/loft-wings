@@ -65,7 +65,7 @@ export default function CierrePage() {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         descuentos: (cuentasHoy ?? []).reduce((s: number, c: any) => s + (c.descuento ?? 0), 0),
       })
-      setCuentasAbiertas((abiertas ?? []) as CuentaAbierta[])
+      setCuentasAbiertas((abiertas ?? []) as unknown as CuentaAbierta[])
     }
 
     if (esCocina) {
@@ -74,7 +74,7 @@ export default function CierrePage() {
         .select('id, cantidad, estado, productos!pedidos_producto_id_fkey(nombre), cuentas!pedidos_cuenta_id_fkey(mesas!cuentas_mesa_id_fkey(nombre))')
         .in('estado', ['nuevo', 'en_preparacion'])
         .order('created_at')
-      setPedidosPendientes((pendientes ?? []) as PedidoPendiente[])
+      setPedidosPendientes((pendientes ?? []) as unknown as PedidoPendiente[])
     }
 
     setLoading(false)
