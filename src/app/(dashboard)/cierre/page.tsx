@@ -173,36 +173,56 @@ export default function CierrePage() {
     setLoadingRes(false)
   }
 
+  const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+
+  async function turnoFetch(path: string, method: string, body: object) {
+    const res = await fetch(`${SUPA_URL}/rest/v1/${path}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPA_KEY,
+        'Authorization': `Bearer ${SUPA_KEY}`,
+        'Prefer': 'return=minimal',
+      },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      const txt = await res.text()
+      throw new Error(`${res.status}: ${txt}`)
+    }
+  }
+
   async function abrirTurno(empleadoId: string) {
-    if (!admin) { alert('❌ No hay sesión activa'); return }
+    const session = getSession()
+    if (!session) { alert('❌ No hay sesión activa'); return }
     setProcesando(empleadoId)
     try {
-      const { error } = await supabase.from('turnos').insert({
+      await turnoFetch('turnos', 'POST', {
         usuario_id: empleadoId,
         inicio: new Date().toISOString(),
-        abierto_por: admin.id,
+        abierto_por: session.id,
       })
-      if (error) alert(`❌ Error al abrir turno: ${error.message}`)
-      else await cargar()
+      await cargar()
     } catch (e: any) {
-      alert(`❌ Excepción: ${e?.message ?? e}`)
+      alert(`❌ Error al abrir turno: ${e?.message ?? e}`)
     } finally {
       setProcesando(null)
     }
   }
 
   async function cerrarTurno(turnoId: string, empleadoId: string) {
-    if (!admin) { alert('❌ No hay sesión activa'); return }
+    const session = getSession()
+    if (!session) { alert('❌ No hay sesión activa'); return }
     setProcesando(empleadoId)
     try {
-      const { error } = await supabase.from('turnos').update({
+      await turnoFetch(`turnos?id=eq.${turnoId}`, 'PATCH', {
         fin: new Date().toISOString(),
-        cerrado_por: admin.id,
-      }).eq('id', turnoId)
-      if (error) alert(`❌ Error al cerrar turno: ${error.message}`)
-      else await cargar()
+        cerrado_por: session.id,
+      })
+      await cargar()
     } catch (e: any) {
-      alert(`❌ Excepción: ${e?.message ?? e}`)
+      alert(`❌ Error al cerrar turno: ${e?.message ?? e}`)
     } finally {
       setProcesando(null)
     }
