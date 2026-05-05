@@ -5,10 +5,10 @@ import { supabase } from '@/lib/supabase'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, CartesianGrid, LabelList } from 'recharts'
 
 interface KPIs {
-  ventas_hoy: number
-  propinas_hoy: number
-  descuentos_hoy: number
-  cuentas_cerradas_hoy: number
+  ventas_periodo: number
+  propinas_periodo: number
+  descuentos_periodo: number
+  cuentas_cerradas: number
   cuentas_abiertas: number
   mesas_ocupadas: number
   mesas_limpieza: number
@@ -26,29 +26,56 @@ interface AnalisisProducto {
   margen_pct: number
   tiempo_estimado: number
   tiempo_real: number | null
-  unidades_7d: number
-  ingreso_7d: number
-  ganancia_7d: number
+  unidades_periodo: number
+  ingreso_periodo: number
+  ganancia_periodo: number
 }
 
 interface MensajeManager { role: 'user' | 'assistant'; content: string }
 
+type Periodo = 'hoy' | 'ayer' | 'semana' | 'mes' | 'custom'
+
 const COLORES = ['#f97316', '#ef4444', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6']
 const COLORES_PAGO = { efectivo: '#22c55e', tarjeta: '#3b82f6', transferencia: '#8b5cf6' }
 
+function getRango(periodo: Periodo, fechaCustom: string) {
+  const d = new Date(); d.setHours(0, 0, 0, 0)
+  const hoy = new Date(d)
+  const manana = new Date(hoy); manana.setDate(manana.getDate() + 1)
+
+  if (periodo === 'hoy') return { inicio: hoy, fin: manana, label: 'hoy', porHora: true }
+  if (periodo === 'ayer') {
+    const ayer = new Date(hoy); ayer.setDate(ayer.getDate() - 1)
+    return { inicio: ayer, fin: hoy, label: 'ayer', porHora: true }
+  }
+  if (periodo === 'semana') {
+    const hace7 = new Date(hoy); hace7.setDate(hace7.getDate() - 7)
+    return { inicio: hace7, fin: manana, label: 'últimos 7 días', porHora: false }
+  }
+  if (periodo === 'mes') {
+    const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
+    return { inicio: inicioMes, fin: manana, label: new Date().toLocaleDateString('es-MX', { month: 'long' }), porHora: false }
+  }
+  const fecha = new Date(fechaCustom + 'T00:00:00')
+  const siguienteDia = new Date(fecha); siguienteDia.setDate(siguienteDia.getDate() + 1)
+  return { inicio: fecha, fin: siguienteDia, label: fecha.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }), porHora: true }
+}
+
 export default function DashboardPage() {
   const [kpis, setKpis] = useState<KPIs>({
-    ventas_hoy: 0, propinas_hoy: 0, descuentos_hoy: 0,
-    cuentas_cerradas_hoy: 0, cuentas_abiertas: 0,
+    ventas_periodo: 0, propinas_periodo: 0, descuentos_periodo: 0,
+    cuentas_cerradas: 0, cuentas_abiertas: 0,
     mesas_ocupadas: 0, mesas_limpieza: 0,
     ticket_promedio: 0, pedidos_cocina: 0, ventas_mes: 0,
   })
-  const [ventasSemana, setVentasSemana] = useState<{ dia: string; total: number }[]>([])
+  const [ventasPeriodo, setVentasPeriodo] = useState<{ dia: string; total: number }[]>([])
   const [topProductos, setTopProductos] = useState<{ nombre: string; cantidad: number }[]>([])
   const [metodoPago, setMetodoPago] = useState<{ name: string; value: number }[]>([])
   const [topMeseros, setTopMeseros] = useState<{ nombre: string; ventas: number; propinas: number; cuentas: number }[]>([])
   const [analisisProductos, setAnalisisProductos] = useState<AnalisisProducto[]>([])
   const [loading, setLoading] = useState(true)
+  const [periodo, setPeriodo] = useState<Periodo>('hoy')
+  const [fechaCustom, setFechaCustom] = useState(new Date().toISOString().split('T')[0])
   const [mensajes, setMensajes] = useState<MensajeManager[]>([
     { role: 'assistant', content: '¡Hola! Soy tu Manager IA. Pregúntame sobre ventas, propinas, rendimiento por mesero, o cualquier métrica del restaurante.' }
   ])
@@ -57,17 +84,17 @@ export default function DashboardPage() {
   const chatRef = useRef<HTMLDivElement>(null)
 
   const fetchDatos = useCallback(async () => {
-    const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
-    const manana = new Date(hoy); manana.setDate(manana.getDate() + 1)
-    const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
+    setLoading(true)
+    const rango = getRango(periodo, fechaCustom)
+    const inicioMes = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
     const hace7dias = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
 
     const [
-      { data: cuentasHoy },
+      { data: cuentasPeriodo },
       { data: cuentasAbiertas },
       { data: mesas },
       { data: pedidosCocina },
-      { data: pedidosSemana },
+      { data: pedidosPeriodo },
       { data: cuentasMes },
       { data: cuentasMeseros },
       { data: productosData },
@@ -76,14 +103,15 @@ export default function DashboardPage() {
       supabase.from('cuentas')
         .select('total, propina, descuento, impuesto, subtotal, metodo_pago')
         .eq('estado', 'cerrada')
-        .gte('cerrada_at', hoy.toISOString())
-        .lt('cerrada_at', manana.toISOString()),
+        .gte('cerrada_at', rango.inicio.toISOString())
+        .lt('cerrada_at', rango.fin.toISOString()),
       supabase.from('cuentas').select('id').eq('estado', 'abierta'),
       supabase.from('mesas').select('estado'),
       supabase.from('pedidos').select('id').in('estado', ['nuevo', 'en_preparacion']),
       supabase.from('pedidos')
         .select('created_at, precio_unitario, cantidad, productos!pedidos_producto_id_fkey(nombre, costo)')
-        .gte('created_at', hace7dias.toISOString())
+        .gte('created_at', rango.inicio.toISOString())
+        .lt('created_at', rango.fin.toISOString())
         .eq('estado', 'entregado'),
       supabase.from('cuentas')
         .select('total')
@@ -92,8 +120,8 @@ export default function DashboardPage() {
       supabase.from('cuentas')
         .select('total, propina, usuarios!cuentas_mesero_id_fkey(nombre)')
         .eq('estado', 'cerrada')
-        .gte('cerrada_at', hoy.toISOString())
-        .lt('cerrada_at', manana.toISOString()),
+        .gte('cerrada_at', rango.inicio.toISOString())
+        .lt('cerrada_at', rango.fin.toISOString()),
       supabase.from('productos')
         .select('nombre, categoria, precio, costo, tiempo_prep_min')
         .eq('activo', true)
@@ -106,19 +134,19 @@ export default function DashboardPage() {
     ])
 
     // KPIs principales
-    const ventasHoy = (cuentasHoy ?? []).reduce((s, c) => s + (c.total ?? 0), 0)
-    const propinasHoy = (cuentasHoy ?? []).reduce((s, c) => s + (c.propina ?? 0), 0)
-    const descuentosHoy = (cuentasHoy ?? []).reduce((s, c) => s + (c.descuento ?? 0), 0)
-    const ticketProm = cuentasHoy?.length ? ventasHoy / cuentasHoy.length : 0
+    const ventasPer = (cuentasPeriodo ?? []).reduce((s, c) => s + (c.total ?? 0), 0)
+    const propinasPer = (cuentasPeriodo ?? []).reduce((s, c) => s + (c.propina ?? 0), 0)
+    const descuentosPer = (cuentasPeriodo ?? []).reduce((s, c) => s + (c.descuento ?? 0), 0)
+    const ticketProm = cuentasPeriodo?.length ? ventasPer / cuentasPeriodo.length : 0
     const ventasMes = (cuentasMes ?? []).reduce((s, c) => s + (c.total ?? 0), 0)
     const mesasOcupadas = (mesas ?? []).filter(m => m.estado === 'ocupada').length
     const mesasLimpieza = (mesas ?? []).filter(m => m.estado === 'limpieza').length
 
     setKpis({
-      ventas_hoy: ventasHoy,
-      propinas_hoy: propinasHoy,
-      descuentos_hoy: descuentosHoy,
-      cuentas_cerradas_hoy: cuentasHoy?.length ?? 0,
+      ventas_periodo: ventasPer,
+      propinas_periodo: propinasPer,
+      descuentos_periodo: descuentosPer,
+      cuentas_cerradas: cuentasPeriodo?.length ?? 0,
       cuentas_abiertas: cuentasAbiertas?.length ?? 0,
       mesas_ocupadas: mesasOcupadas,
       mesas_limpieza: mesasLimpieza,
@@ -129,23 +157,25 @@ export default function DashboardPage() {
 
     // Método de pago
     const pagos: Record<string, number> = {}
-    ;(cuentasHoy ?? []).forEach(c => {
+    ;(cuentasPeriodo ?? []).forEach(c => {
       const m = c.metodo_pago ?? 'efectivo'
       pagos[m] = (pagos[m] ?? 0) + (c.total ?? 0)
     })
     setMetodoPago(Object.entries(pagos).map(([name, value]) => ({ name, value })))
 
-    // Ventas semana
-    const dias: Record<string, number> = {}
-    ;(pedidosSemana ?? []).forEach(p => {
-      const dia = new Date(p.created_at).toLocaleDateString('es-MX', { weekday: 'short' })
-      dias[dia] = (dias[dia] ?? 0) + (p.precio_unitario * p.cantidad)
+    // Ventas por período agrupadas
+    const grupos: Record<string, number> = {}
+    ;(pedidosPeriodo ?? []).forEach(p => {
+      const key = rango.porHora
+        ? `${new Date(p.created_at).getHours().toString().padStart(2, '0')}:00`
+        : new Date(p.created_at).toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric' })
+      grupos[key] = (grupos[key] ?? 0) + (p.precio_unitario * p.cantidad)
     })
-    setVentasSemana(Object.entries(dias).map(([dia, total]) => ({ dia, total })))
+    setVentasPeriodo(Object.entries(grupos).map(([dia, total]) => ({ dia, total })))
 
     // Top productos
     const conteo: Record<string, number> = {}
-    ;(pedidosSemana ?? []).forEach(p => {
+    ;(pedidosPeriodo ?? []).forEach(p => {
       const nombre = (p.productos as unknown as { nombre: string } | null)?.nombre ?? 'N/A'
       conteo[nombre] = (conteo[nombre] ?? 0) + p.cantidad
     })
@@ -154,7 +184,7 @@ export default function DashboardPage() {
         .map(([nombre, cantidad]) => ({ nombre, cantidad }))
     )
 
-    // Top meseros hoy
+    // Top meseros
     const meseroMap: Record<string, { nombre: string; ventas: number; propinas: number; cuentas: number }> = {}
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ;(cuentasMeseros ?? []).forEach((c: any) => {
@@ -166,7 +196,7 @@ export default function DashboardPage() {
     })
     setTopMeseros(Object.values(meseroMap).sort((a, b) => b.ventas - a.ventas))
 
-    // Tiempos reales promedio por producto
+    // Tiempos reales promedio
     const tiemposReales: Record<string, number[]> = {}
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ;(pedidosTiempos ?? []).forEach((p: any) => {
@@ -179,18 +209,18 @@ export default function DashboardPage() {
       }
     })
 
-    // Unidades vendidas por producto en 7 días
-    const unidades7d: Record<string, { cantidad: number; ingreso: number; costo_total: number }> = {}
+    // Unidades por producto en el período
+    const unidadesPer: Record<string, { cantidad: number; ingreso: number; costo_total: number }> = {}
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(pedidosSemana ?? []).forEach((p: any) => {
+    ;(pedidosPeriodo ?? []).forEach((p: any) => {
       const nombre = p.productos?.nombre ?? 'N/A'
-      if (!unidades7d[nombre]) unidades7d[nombre] = { cantidad: 0, ingreso: 0, costo_total: 0 }
-      unidades7d[nombre].cantidad += p.cantidad
-      unidades7d[nombre].ingreso += p.precio_unitario * p.cantidad
-      unidades7d[nombre].costo_total += (p.productos?.costo ?? 0) * p.cantidad
+      if (!unidadesPer[nombre]) unidadesPer[nombre] = { cantidad: 0, ingreso: 0, costo_total: 0 }
+      unidadesPer[nombre].cantidad += p.cantidad
+      unidadesPer[nombre].ingreso += p.precio_unitario * p.cantidad
+      unidadesPer[nombre].costo_total += (p.productos?.costo ?? 0) * p.cantidad
     })
 
-    // Armar análisis completo
+    // Análisis completo
     const analisis: AnalisisProducto[] = (productosData ?? []).map(prod => {
       const margen = prod.precio - prod.costo
       const margen_pct = prod.precio > 0 ? (margen / prod.precio) * 100 : 0
@@ -198,7 +228,7 @@ export default function DashboardPage() {
       const tiempo_real = tiemposArr?.length
         ? tiemposArr.reduce((a, b) => a + b, 0) / tiemposArr.length
         : null
-      const stats = unidades7d[prod.nombre] ?? { cantidad: 0, ingreso: 0, costo_total: 0 }
+      const stats = unidadesPer[prod.nombre] ?? { cantidad: 0, ingreso: 0, costo_total: 0 }
       return {
         nombre: prod.nombre,
         categoria: prod.categoria,
@@ -208,15 +238,15 @@ export default function DashboardPage() {
         margen_pct,
         tiempo_estimado: prod.tiempo_prep_min,
         tiempo_real,
-        unidades_7d: stats.cantidad,
-        ingreso_7d: stats.ingreso,
-        ganancia_7d: stats.ingreso - stats.costo_total,
+        unidades_periodo: stats.cantidad,
+        ingreso_periodo: stats.ingreso,
+        ganancia_periodo: stats.ingreso - stats.costo_total,
       }
-    }).sort((a, b) => b.ganancia_7d - a.ganancia_7d)
+    }).sort((a, b) => b.ganancia_periodo - a.ganancia_periodo)
 
     setAnalisisProductos(analisis)
     setLoading(false)
-  }, [])
+  }, [periodo, fechaCustom])
 
   useEffect(() => { fetchDatos() }, [fetchDatos])
   useEffect(() => {
@@ -233,7 +263,7 @@ export default function DashboardPage() {
       const res = await fetch('/api/ai/manager', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: nuevos.slice(-8), kpis, ventasSemana, topProductos, analisisProductos }),
+        body: JSON.stringify({ messages: nuevos.slice(-8), kpis, ventasSemana: ventasPeriodo, topProductos, analisisProductos }),
       })
       const reader = res.body?.getReader()
       const decoder = new TextDecoder()
@@ -252,6 +282,8 @@ export default function DashboardPage() {
     } finally { setCargando(false) }
   }
 
+  const rango = getRango(periodo, fechaCustom)
+
   if (loading) return (
     <div className="flex items-center justify-center h-64">
       <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
@@ -260,7 +292,7 @@ export default function DashboardPage() {
 
   return (
     <div className="p-4 lg:p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">📊 Dashboard Gerencial</h1>
           <p className="text-gray-400 text-sm mt-0.5">{new Date().toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
@@ -270,27 +302,51 @@ export default function DashboardPage() {
         </button>
       </div>
 
+      {/* Filtro de período */}
+      <div className="flex gap-2 flex-wrap items-center">
+        {(['hoy', 'ayer', 'semana', 'mes'] as Periodo[]).map(p => (
+          <button
+            key={p}
+            onClick={() => setPeriodo(p)}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
+              periodo === p ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+            }`}
+          >
+            {p === 'hoy' ? 'Hoy' : p === 'ayer' ? 'Ayer' : p === 'semana' ? '7 días' : 'Este mes'}
+          </button>
+        ))}
+        <input
+          type="date"
+          value={fechaCustom}
+          max={new Date().toISOString().split('T')[0]}
+          onChange={e => { setFechaCustom(e.target.value); setPeriodo('custom') }}
+          className={`bg-gray-800 border text-white text-sm rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500 ${
+            periodo === 'custom' ? 'border-orange-500' : 'border-gray-700'
+          }`}
+        />
+      </div>
+
       {/* KPIs fila 1 — ventas */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="bg-green-500/10 border border-green-500/20 rounded-2xl p-5">
           <p className="text-2xl mb-1">💰</p>
-          <p className="text-3xl font-bold text-green-400">${kpis.ventas_hoy.toLocaleString('es-MX', { maximumFractionDigits: 0 })}</p>
-          <p className="text-gray-400 text-sm mt-1">Ventas hoy</p>
-          <p className="text-gray-600 text-xs mt-0.5">{kpis.cuentas_cerradas_hoy} cuentas cobradas</p>
+          <p className="text-3xl font-bold text-green-400">${kpis.ventas_periodo.toLocaleString('es-MX', { maximumFractionDigits: 0 })}</p>
+          <p className="text-gray-400 text-sm mt-1">Ventas <span className="text-orange-400">{rango.label}</span></p>
+          <p className="text-gray-600 text-xs mt-0.5">{kpis.cuentas_cerradas} cuentas cobradas</p>
         </div>
         <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-2xl p-5">
           <p className="text-2xl mb-1">🤝</p>
-          <p className="text-3xl font-bold text-yellow-400">${kpis.propinas_hoy.toLocaleString('es-MX', { maximumFractionDigits: 0 })}</p>
-          <p className="text-gray-400 text-sm mt-1">Propinas hoy</p>
+          <p className="text-3xl font-bold text-yellow-400">${kpis.propinas_periodo.toLocaleString('es-MX', { maximumFractionDigits: 0 })}</p>
+          <p className="text-gray-400 text-sm mt-1">Propinas <span className="text-orange-400">{rango.label}</span></p>
           <p className="text-gray-600 text-xs mt-0.5">
-            {kpis.ventas_hoy > 0 ? `${((kpis.propinas_hoy / kpis.ventas_hoy) * 100).toFixed(1)}% del total` : '—'}
+            {kpis.ventas_periodo > 0 ? `${((kpis.propinas_periodo / kpis.ventas_periodo) * 100).toFixed(1)}% del total` : '—'}
           </p>
         </div>
         <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-5">
           <p className="text-2xl mb-1">🎯</p>
           <p className="text-3xl font-bold text-purple-400">${kpis.ticket_promedio.toFixed(0)}</p>
           <p className="text-gray-400 text-sm mt-1">Ticket promedio</p>
-          <p className="text-gray-600 text-xs mt-0.5">por cuenta hoy</p>
+          <p className="text-gray-600 text-xs mt-0.5">por cuenta · {rango.label}</p>
         </div>
         <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-5">
           <p className="text-2xl mb-1">📅</p>
@@ -307,7 +363,7 @@ export default function DashboardPage() {
           { label: 'Cuentas abiertas', value: kpis.cuentas_abiertas, emoji: '📋', color: 'text-blue-400' },
           { label: 'En cocina', value: kpis.pedidos_cocina, emoji: '👨‍🍳', color: 'text-yellow-400' },
           { label: 'En limpieza', value: kpis.mesas_limpieza, emoji: '🧹', color: 'text-cyan-400' },
-          { label: 'Descuentos hoy', value: `$${kpis.descuentos_hoy.toFixed(0)}`, emoji: '🏷️', color: 'text-red-400' },
+          { label: 'Descuentos', value: `$${kpis.descuentos_periodo.toFixed(0)}`, emoji: '🏷️', color: 'text-red-400' },
         ].map(k => (
           <div key={k.label} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 text-center">
             <p className="text-xl mb-1">{k.emoji}</p>
@@ -317,10 +373,10 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* Meseros hoy */}
+      {/* Meseros */}
       {topMeseros.length > 0 && (
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-          <h3 className="font-semibold text-white mb-4">👤 Rendimiento de meseros — hoy</h3>
+          <h3 className="font-semibold text-white mb-4">👤 Rendimiento de meseros — <span className="text-orange-400">{rango.label}</span></h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -337,7 +393,7 @@ export default function DashboardPage() {
                   <tr key={m.nombre} className="hover:bg-gray-800/50">
                     <td className="py-3 pr-4">
                       <div className="flex items-center gap-2">
-                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white`}
+                        <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white"
                           style={{ backgroundColor: COLORES[i % COLORES.length] }}>
                           {m.nombre.charAt(0).toUpperCase()}
                         </span>
@@ -358,12 +414,12 @@ export default function DashboardPage() {
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Ventas semana */}
+        {/* Ventas período */}
         <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-2xl p-5">
-          <h3 className="font-semibold text-white mb-4">📈 Ventas últimos 7 días</h3>
-          {ventasSemana.length > 0 ? (
+          <h3 className="font-semibold text-white mb-4">📈 Ventas — <span className="text-orange-400">{rango.label}</span></h3>
+          {ventasPeriodo.length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={ventasSemana}>
+              <BarChart data={ventasPeriodo}>
                 <XAxis dataKey="dia" stroke="#6b7280" fontSize={12} />
                 <YAxis stroke="#6b7280" fontSize={12} tickFormatter={v => `$${v}`} />
                 <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '12px' }}
@@ -371,12 +427,12 @@ export default function DashboardPage() {
                 <Bar dataKey="total" fill="#f97316" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
-          ) : <p className="text-gray-500 text-center py-16 text-sm">Sin datos esta semana</p>}
+          ) : <p className="text-gray-500 text-center py-16 text-sm">Sin datos para este período</p>}
         </div>
 
         {/* Método de pago */}
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-          <h3 className="font-semibold text-white mb-4">💳 Pago de hoy</h3>
+          <h3 className="font-semibold text-white mb-4">💳 Pago — <span className="text-orange-400">{rango.label}</span></h3>
           {metodoPago.length > 0 ? (
             <>
               <ResponsiveContainer width="100%" height={160}>
@@ -400,13 +456,13 @@ export default function DashboardPage() {
                 ))}
               </div>
             </>
-          ) : <p className="text-gray-500 text-center py-16 text-sm">Sin cobros hoy</p>}
+          ) : <p className="text-gray-500 text-center py-16 text-sm">Sin cobros en este período</p>}
         </div>
       </div>
 
       {/* Top productos */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-        <h3 className="font-semibold text-white mb-4">🏆 Top productos vendidos (7 días)</h3>
+        <h3 className="font-semibold text-white mb-4">🏆 Top productos — <span className="text-orange-400">{rango.label}</span></h3>
         {topProductos.length > 0 ? (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {topProductos.map((p, i) => (
@@ -425,17 +481,17 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
-        ) : <p className="text-gray-500 text-center py-8 text-sm">Sin datos esta semana</p>}
+        ) : <p className="text-gray-500 text-center py-8 text-sm">Sin datos para este período</p>}
       </div>
 
       {/* ─── RENTABILIDAD POR PRODUCTO ─── */}
       {analisisProductos.length > 0 && (() => {
         const top12 = [...analisisProductos].sort((a, b) => b.margen_pct - a.margen_pct).slice(0, 12)
-        const top12ganancia = [...analisisProductos].filter(p => p.unidades_7d > 0).sort((a, b) => b.ganancia_7d - a.ganancia_7d).slice(0, 10)
+        const top12ganancia = [...analisisProductos].filter(p => p.unidades_periodo > 0).sort((a, b) => b.ganancia_periodo - a.ganancia_periodo).slice(0, 10)
 
         return (
           <div className="space-y-4">
-            {/* Margen % por producto */}
+            {/* Margen % */}
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-white">💰 Margen de ganancia por producto</h3>
@@ -467,11 +523,11 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Ganancia generada en 7 días */}
+            {/* Ganancia generada en período */}
             {top12ganancia.length > 0 && (
               <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold text-white">📈 Ganancia real generada — últimos 7 días</h3>
+                  <h3 className="font-semibold text-white">📈 Ganancia real generada — <span className="text-orange-400">{rango.label}</span></h3>
                   <span className="text-xs text-gray-500">Solo productos con ventas</span>
                 </div>
                 <ResponsiveContainer width="100%" height={260}>
@@ -483,12 +539,12 @@ export default function DashboardPage() {
                       contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '12px' }}
                       formatter={(v: any, name: any) => [
                         `$${v.toFixed(2)}`,
-                        name === 'ganancia_7d' ? 'Ganancia' : 'Ingreso bruto'
+                        name === 'ganancia_periodo' ? 'Ganancia' : 'Ingreso bruto'
                       ]}
                     />
-                    <Legend formatter={v => <span className="text-gray-300 text-xs">{v === 'ganancia_7d' ? 'Ganancia neta' : 'Ingreso bruto'}</span>} />
-                    <Bar dataKey="ingreso_7d" fill="#3b82f620" stroke="#3b82f6" strokeWidth={1} radius={[4, 4, 0, 0]} name="ingreso_7d" />
-                    <Bar dataKey="ganancia_7d" fill="#22c55e" radius={[4, 4, 0, 0]} name="ganancia_7d" />
+                    <Legend formatter={v => <span className="text-gray-300 text-xs">{v === 'ganancia_periodo' ? 'Ganancia neta' : 'Ingreso bruto'}</span>} />
+                    <Bar dataKey="ingreso_periodo" fill="#3b82f620" stroke="#3b82f6" strokeWidth={1} radius={[4, 4, 0, 0]} name="ingreso_periodo" />
+                    <Bar dataKey="ganancia_periodo" fill="#22c55e" radius={[4, 4, 0, 0]} name="ganancia_periodo" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -496,7 +552,6 @@ export default function DashboardPage() {
 
             {/* Precio vs Costo + Tiempos */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* Costo vs Precio */}
               <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
                 <h3 className="font-semibold text-white mb-4">🏷️ Costo vs Precio de venta</h3>
                 <ResponsiveContainer width="100%" height={220}>
@@ -515,10 +570,9 @@ export default function DashboardPage() {
                 </ResponsiveContainer>
               </div>
 
-              {/* Tiempos estimado vs real */}
               <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
                 <h3 className="font-semibold text-white mb-1">⏱️ Tiempo de preparación</h3>
-                <p className="text-xs text-gray-500 mb-3">Estimado vs promedio real en cocina</p>
+                <p className="text-xs text-gray-500 mb-3">Estimado vs promedio real (últimos 7 días)</p>
                 {analisisProductos.some(p => p.tiempo_real !== null) ? (
                   <ResponsiveContainer width="100%" height={220}>
                     <BarChart
@@ -555,7 +609,7 @@ export default function DashboardPage() {
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
                 <h3 className="font-semibold text-white">📋 Tabla completa de rentabilidad</h3>
-                <span className="text-xs text-gray-500">{analisisProductos.length} productos</span>
+                <span className="text-xs text-gray-500">{analisisProductos.length} productos · {rango.label}</span>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
@@ -566,8 +620,8 @@ export default function DashboardPage() {
                       <th className="text-right px-3 py-3">Costo</th>
                       <th className="text-right px-3 py-3">Margen $</th>
                       <th className="text-right px-3 py-3">Margen %</th>
-                      <th className="text-right px-3 py-3">Vendidos 7d</th>
-                      <th className="text-right px-3 py-3">Ganancia 7d</th>
+                      <th className="text-right px-3 py-3">Vendidos</th>
+                      <th className="text-right px-3 py-3">Ganancia</th>
                       <th className="text-right px-4 py-3">Tiempo</th>
                     </tr>
                   </thead>
@@ -592,9 +646,9 @@ export default function DashboardPage() {
                             {p.margen_pct.toFixed(1)}%
                           </span>
                         </td>
-                        <td className="px-3 py-2.5 text-right text-gray-300">{p.unidades_7d}</td>
+                        <td className="px-3 py-2.5 text-right text-gray-300">{p.unidades_periodo}</td>
                         <td className="px-3 py-2.5 text-right font-bold text-green-400">
-                          {p.ganancia_7d > 0 ? `$${p.ganancia_7d.toFixed(0)}` : '—'}
+                          {p.ganancia_periodo > 0 ? `$${p.ganancia_periodo.toFixed(0)}` : '—'}
                         </td>
                         <td className="px-4 py-2.5 text-right">
                           {p.tiempo_real !== null ? (
