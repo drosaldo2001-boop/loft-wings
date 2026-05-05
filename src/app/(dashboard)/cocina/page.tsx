@@ -209,7 +209,7 @@ export default function CocinaPage() {
                       ×{pedido.cantidad}
                     </span>
                     <p className="text-white font-medium text-sm flex-1">
-                      {pedido.productos?.nombre ?? 'Producto'}
+                      {pedido.productos?.nombre ?? pedido.notas?.replace('[Promo] ', '') ?? 'Pedido especial'}
                     </p>
                   </div>
                   {pedido.modificaciones.length > 0 && (

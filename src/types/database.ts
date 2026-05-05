@@ -80,7 +80,7 @@ export interface Database {
         Row: {
           id: string
           cuenta_id: string
-          producto_id: string
+          producto_id: string | null
           cantidad: number
           precio_unitario: number
           modificaciones: string[]

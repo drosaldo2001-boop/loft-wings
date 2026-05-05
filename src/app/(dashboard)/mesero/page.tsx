@@ -11,7 +11,7 @@ type Producto = Database['public']['Tables']['productos']['Row']
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Cuenta = any
 
-type PedidoItem = { producto: Producto; cantidad: number; notas: string; modificaciones: string[] }
+type PedidoItem = { producto: Producto | null; promoData?: Promocion; cantidad: number; notas: string; modificaciones: string[] }
 type Vista = 'mesas' | 'abrirMesa' | 'selCuenta' | 'menu' | 'carrito' | 'ia' | 'resumen'
 
 interface Promocion {
@@ -228,13 +228,26 @@ export default function MeseroPage() {
 
   function agregarAlCarrito(producto: Producto, modificaciones: string[]) {
     setCarrito(prev => {
-      const idx = prev.findIndex(i => i.producto.id === producto.id && JSON.stringify(i.modificaciones) === JSON.stringify(modificaciones))
+      const idx = prev.findIndex(i => i.producto?.id === producto.id && JSON.stringify(i.modificaciones) === JSON.stringify(modificaciones))
       if (idx >= 0) {
         const nuevo = [...prev]
         nuevo[idx] = { ...nuevo[idx], cantidad: nuevo[idx].cantidad + 1 }
         return nuevo
       }
       return [...prev, { producto, cantidad: 1, notas: '', modificaciones }]
+    })
+  }
+
+  function agregarPromo(promo: Promocion) {
+    if (!promo.precio) return
+    setCarrito(prev => {
+      const idx = prev.findIndex(i => i.promoData?.id === promo.id)
+      if (idx >= 0) {
+        const nuevo = [...prev]
+        nuevo[idx] = { ...nuevo[idx], cantidad: nuevo[idx].cantidad + 1 }
+        return nuevo
+      }
+      return [...prev, { producto: null, promoData: promo, cantidad: 1, notas: '', modificaciones: [] }]
     })
   }
 
@@ -272,11 +285,11 @@ export default function MeseroPage() {
     const { error: errPedidos } = await supabase.from('pedidos').insert(
       carrito.map(item => ({
         cuenta_id: cuentaActiva.id,
-        producto_id: item.producto.id,
+        producto_id: item.producto?.id ?? null,
         cantidad: item.cantidad,
-        precio_unitario: item.producto.precio,
+        precio_unitario: item.promoData?.precio ?? item.producto?.precio ?? 0,
         modificaciones: item.modificaciones,
-        notas: item.notas || null,
+        notas: item.promoData ? `[Promo] ${item.promoData.nombre}` : (item.notas || null),
         estado: 'nuevo' as EstadoPedido,
       }))
     )
@@ -287,7 +300,7 @@ export default function MeseroPage() {
       return
     }
 
-    const subtotalNuevo = carrito.reduce((s, i) => s + i.producto.precio * i.cantidad, 0)
+    const subtotalNuevo = carrito.reduce((s, i) => s + (i.promoData?.precio ?? i.producto?.precio ?? 0) * i.cantidad, 0)
     const nuevoSubtotal = (cuentaActiva.subtotal ?? 0) + subtotalNuevo
     await supabase.from('cuentas').update({
       subtotal: nuevoSubtotal,
@@ -317,7 +330,7 @@ export default function MeseroPage() {
         body: JSON.stringify({
           messages: nuevos.slice(-8),
           mesaActiva: mesaActiva?.nombre,
-          carrito: carrito.map(i => `${i.cantidad}x ${i.producto.nombre}`),
+          carrito: carrito.map(i => `${i.cantidad}x ${i.promoData?.nombre ?? i.producto?.nombre ?? ''}`),
         }),
       })
       const reader = res.body?.getReader()
@@ -341,7 +354,7 @@ export default function MeseroPage() {
     }
   }
 
-  const totalCarrito = carrito.reduce((s, i) => s + i.producto.precio * i.cantidad, 0)
+  const totalCarrito = carrito.reduce((s, i) => s + (i.promoData?.precio ?? i.producto?.precio ?? 0) * i.cantidad, 0)
   const productosFiltrados = productos.filter(p => p.categoria === categoriaActiva)
 
   const DIAS: Record<string, string> = {
@@ -668,11 +681,19 @@ export default function MeseroPage() {
                           <p className="text-xs text-gray-400 mt-1">{promo.descripcion}</p>
                         )}
                       </div>
-                      {promo.precio != null && (
-                        <span className={`font-bold text-lg whitespace-nowrap ${esHoy ? 'text-yellow-400' : 'text-orange-400'}`}>
-                          ${promo.precio}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {promo.precio != null && (
+                          <span className={`font-bold text-lg whitespace-nowrap ${esHoy ? 'text-yellow-400' : 'text-orange-400'}`}>
+                            ${promo.precio}
+                          </span>
+                        )}
+                        {esHoy && promo.precio != null && (
+                          <button
+                            onClick={() => agregarPromo(promo)}
+                            className="w-9 h-9 bg-yellow-500 hover:bg-yellow-400 rounded-xl text-white text-xl font-bold flex items-center justify-center transition active:scale-90"
+                          >+</button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )
@@ -689,22 +710,29 @@ export default function MeseroPage() {
             {carrito.length === 0 ? (
               <p className="text-gray-500 text-center py-12">El carrito está vacío</p>
             ) : (
-              carrito.map((item, idx) => (
-                <div key={idx} className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-center gap-3">
-                  <div className="flex-1">
-                    <p className="font-medium text-white text-sm">{item.producto.nombre}</p>
-                    {item.modificaciones.length > 0 && (
-                      <p className="text-xs text-orange-300 mt-0.5">🔥 {item.modificaciones.join(', ')}</p>
-                    )}
-                    <p className="text-orange-400 text-sm font-bold mt-1">${(item.producto.precio * item.cantidad).toFixed(2)}</p>
+              carrito.map((item, idx) => {
+                const nombre = item.promoData?.nombre ?? item.producto?.nombre ?? ''
+                const precio = item.promoData?.precio ?? item.producto?.precio ?? 0
+                return (
+                  <div key={idx} className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-center gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        {item.promoData && <span className="text-xs bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded-full">🎉 Promo</span>}
+                        <p className="font-medium text-white text-sm">{nombre}</p>
+                      </div>
+                      {item.modificaciones.length > 0 && (
+                        <p className="text-xs text-orange-300 mt-0.5">🔥 {item.modificaciones.join(', ')}</p>
+                      )}
+                      <p className="text-orange-400 text-sm font-bold mt-1">${(precio * item.cantidad).toFixed(2)}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => quitarDelCarrito(idx)} className="w-8 h-8 bg-gray-800 rounded-lg text-white flex items-center justify-center hover:bg-red-500/20">−</button>
+                      <span className="text-white font-bold w-6 text-center">{item.cantidad}</span>
+                      <button onClick={() => item.promoData ? agregarPromo(item.promoData) : (item.producto && agregarAlCarrito(item.producto, item.modificaciones))} className="w-8 h-8 bg-orange-500/20 rounded-lg text-orange-400 flex items-center justify-center hover:bg-orange-500/30">+</button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => quitarDelCarrito(idx)} className="w-8 h-8 bg-gray-800 rounded-lg text-white flex items-center justify-center hover:bg-red-500/20">−</button>
-                    <span className="text-white font-bold w-6 text-center">{item.cantidad}</span>
-                    <button onClick={() => agregarAlCarrito(item.producto, item.modificaciones)} className="w-8 h-8 bg-orange-500/20 rounded-lg text-orange-400 flex items-center justify-center hover:bg-orange-500/30">+</button>
-                  </div>
-                </div>
-              ))
+                )
+              })
             )}
           </div>
 

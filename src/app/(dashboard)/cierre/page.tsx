@@ -43,50 +43,38 @@ export default function CierrePage() {
     const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
     const manana = new Date(hoy); manana.setDate(manana.getDate() + 1)
 
-    const esMesero = user.rol === 'mesero' || user.rol === 'admin' || user.rol === 'gerente'
-    const esCocina = user.rol === 'cocina' || user.rol === 'admin' || user.rol === 'gerente'
-
-    const promesas: Promise<any>[] = []
+    const esAdmin = user.rol === 'admin' || user.rol === 'gerente'
+    const esMesero = user.rol === 'mesero' || esAdmin || user.rol === 'cajero'
+    const esCocina = user.rol === 'cocina' || esAdmin
 
     if (esMesero) {
-      // Cuentas cerradas hoy por este mesero
-      const queryResumen = user.rol === 'admin' || user.rol === 'gerente'
+      const qResumen = esAdmin
         ? supabase.from('cuentas').select('total, propina, descuento').eq('estado', 'cerrada').gte('cerrada_at', hoy.toISOString()).lt('cerrada_at', manana.toISOString())
         : supabase.from('cuentas').select('total, propina, descuento').eq('estado', 'cerrada').eq('mesero_id', user.id).gte('cerrada_at', hoy.toISOString()).lt('cerrada_at', manana.toISOString())
-
-      const queryAbiertas = user.rol === 'admin' || user.rol === 'gerente'
+      const qAbiertas = esAdmin
         ? supabase.from('cuentas').select('id, nombre_cuenta, total, created_at, mesas!cuentas_mesa_id_fkey(nombre)').eq('estado', 'abierta').order('created_at')
         : supabase.from('cuentas').select('id, nombre_cuenta, total, created_at, mesas!cuentas_mesa_id_fkey(nombre)').eq('estado', 'abierta').eq('mesero_id', user.id).order('created_at')
 
-      promesas.push(queryResumen, queryAbiertas)
+      const [{ data: cuentasHoy }, { data: abiertas }] = await Promise.all([qResumen, qAbiertas])
+      setResumen({
+        cuentas: cuentasHoy?.length ?? 0,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ventas: (cuentasHoy ?? []).reduce((s: number, c: any) => s + (c.total ?? 0), 0),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        propinas: (cuentasHoy ?? []).reduce((s: number, c: any) => s + (c.propina ?? 0), 0),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        descuentos: (cuentasHoy ?? []).reduce((s: number, c: any) => s + (c.descuento ?? 0), 0),
+      })
+      setCuentasAbiertas((abiertas ?? []) as CuentaAbierta[])
     }
 
     if (esCocina) {
-      const queryPendientes = supabase
+      const { data: pendientes } = await supabase
         .from('pedidos')
         .select('id, cantidad, estado, productos!pedidos_producto_id_fkey(nombre), cuentas!pedidos_cuenta_id_fkey(mesas!cuentas_mesa_id_fkey(nombre))')
         .in('estado', ['nuevo', 'en_preparacion'])
         .order('created_at')
-      promesas.push(queryPendientes)
-    }
-
-    const resultados = await Promise.all(promesas)
-
-    if (esMesero) {
-      const cuentasHoy = resultados[0]?.data ?? []
-      const abiertas = resultados[1]?.data ?? []
-      setResumen({
-        cuentas: cuentasHoy.length,
-        ventas: cuentasHoy.reduce((s: number, c: any) => s + (c.total ?? 0), 0),
-        propinas: cuentasHoy.reduce((s: number, c: any) => s + (c.propina ?? 0), 0),
-        descuentos: cuentasHoy.reduce((s: number, c: any) => s + (c.descuento ?? 0), 0),
-      })
-      setCuentasAbiertas(abiertas as CuentaAbierta[])
-    }
-
-    if (esCocina) {
-      const idx = esMesero ? 2 : 0
-      setPedidosPendientes((resultados[idx]?.data ?? []) as PedidoPendiente[])
+      setPedidosPendientes((pendientes ?? []) as PedidoPendiente[])
     }
 
     setLoading(false)
