@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
+import { generarToken, segundosRestantes } from '@/lib/token'
 
 interface Empleado {
   id: string
@@ -88,6 +89,16 @@ export default function CierrePage() {
 
   const hoy = new Date().toISOString().split('T')[0]
   const esHoy = fecha === hoy
+
+  const [tokenActual, setTokenActual] = useState(generarToken)
+  const [segs, setSegs] = useState(segundosRestantes)
+  useEffect(() => {
+    const id = setInterval(() => {
+      setTokenActual(generarToken())
+      setSegs(segundosRestantes())
+    }, 1000)
+    return () => clearInterval(id)
+  }, [])
 
   // ── CARGAR TURNOS DEL DÍA ──
   const cargar = useCallback(async () => {
@@ -283,6 +294,23 @@ export default function CierrePage() {
       {/* ═══ TAB: TURNOS ═══ */}
       {tab === 'turnos' && (
         <div className="space-y-4">
+          {/* Token rotativo */}
+          {esHoy && (
+            <div className="bg-gray-900 border border-orange-500/30 rounded-2xl p-4 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Código para empleados · expira en {segs}s</p>
+                <p className="text-4xl font-mono font-bold text-orange-400 tracking-widest">{tokenActual}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-gray-500 mb-1">Página de fichaje</p>
+                <a href="/fichar" target="_blank"
+                  className="text-sm text-orange-400 underline underline-offset-2 hover:text-orange-300">
+                  /fichar →
+                </a>
+              </div>
+            </div>
+          )}
+
           {/* Filtro fecha + stats */}
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="grid grid-cols-3 gap-3 flex-1">
