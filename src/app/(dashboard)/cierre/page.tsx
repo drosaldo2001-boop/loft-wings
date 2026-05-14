@@ -72,7 +72,7 @@ function fmtFecha(fecha: string) {
 
 export default function CierrePage() {
   const admin = getSession()
-  const [tab, setTab] = useState<'turnos' | 'resumen'>('turnos')
+  const [tab, setTab] = useState<'turnos' | 'resumen' | 'propinas'>('turnos')
 
   // ── TAB TURNOS ──
   const [empleados, setEmpleados] = useState<Empleado[]>([])
@@ -92,6 +92,18 @@ export default function CierrePage() {
   const [periodoRes, setPeriodoRes] = useState<'semana' | 'mes'>('semana')
   const [diasResumen, setDiasResumen] = useState<DiaResumen[]>([])
   const [loadingRes, setLoadingRes] = useState(false)
+
+  // ── TAB PROPINAS ──
+  interface PropinaCuenta {
+    id: string; total: number; propina: number; cerrada_at: string
+    mesero: string; empleadosActivos: string[]; porPersona: number
+  }
+  interface ResumenEmpleado { id: string; nombre: string; total: number; cuentas: number }
+  const [periodoProp, setPeriodoProp] = useState<'hoy' | 'semana' | 'mes'>('hoy')
+  const [detallePropinas, setDetallePropinas] = useState<PropinaCuenta[]>([])
+  const [resumenPropinas, setResumenPropinas] = useState<ResumenEmpleado[]>([])
+  const [loadingProp, setLoadingProp] = useState(false)
+  const [totalPropinas, setTotalPropinas] = useState(0)
 
   const hoy = new Date().toISOString().split('T')[0]
   const esHoy = fecha === hoy
@@ -199,6 +211,83 @@ export default function CierrePage() {
     setLoadingRes(false)
   }
 
+  // ── CARGAR PROPINAS ──
+  useEffect(() => {
+    if (tab !== 'propinas') return
+    cargarPropinas()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, periodoProp])
+
+  async function cargarPropinas() {
+    setLoadingProp(true)
+    const ahora = new Date()
+    let inicio: Date
+    if (periodoProp === 'hoy') {
+      inicio = new Date(ahora.toISOString().split('T')[0] + 'T00:00:00')
+    } else if (periodoProp === 'semana') {
+      inicio = new Date(ahora); inicio.setDate(ahora.getDate() - 6); inicio.setHours(0,0,0,0)
+    } else {
+      inicio = new Date(ahora.getFullYear(), ahora.getMonth(), 1)
+    }
+    const fin = new Date(ahora); fin.setHours(23,59,59,999)
+
+    const [{ data: cuentas }, { data: turnos }, { data: usuarios }] = await Promise.all([
+      supabase.from('cuentas')
+        .select('id, total, propina, cerrada_at, mesero_id')
+        .eq('estado', 'cerrada').gt('propina', 0)
+        .gte('cerrada_at', inicio.toISOString())
+        .lte('cerrada_at', fin.toISOString())
+        .order('cerrada_at', { ascending: false }),
+      supabase.from('turnos')
+        .select('id, usuario_id, inicio, fin')
+        .gte('inicio', inicio.toISOString())
+        .lte('inicio', fin.toISOString()),
+      supabase.from('usuarios').select('id, nombre').eq('activo', true),
+    ])
+
+    if (!cuentas || !turnos || !usuarios) { setLoadingProp(false); return }
+
+    const nombreMap: Record<string, string> = {}
+    usuarios.forEach((u: any) => { nombreMap[u.id] = u.nombre })
+
+    // Para cada cuenta, encontrar empleados activos en ese momento
+    const detalles: PropinaCuenta[] = cuentas.map((c: any) => {
+      const ts = new Date(c.cerrada_at).getTime()
+      const activos = (turnos as any[]).filter(t => {
+        const ini = new Date(t.inicio).getTime()
+        const fin2 = t.fin ? new Date(t.fin).getTime() : Date.now()
+        return ini <= ts && fin2 >= ts
+      })
+      const nombres = activos.map((t: any) => nombreMap[t.usuario_id] ?? '?').filter(Boolean)
+      const unicos = [...new Set(nombres)]
+      return {
+        id: c.id,
+        total: c.total,
+        propina: c.propina,
+        cerrada_at: c.cerrada_at,
+        mesero: nombreMap[c.mesero_id] ?? '?',
+        empleadosActivos: unicos,
+        porPersona: unicos.length > 0 ? c.propina / unicos.length : c.propina,
+      }
+    })
+
+    // Resumen por empleado
+    const mapa: Record<string, ResumenEmpleado> = {}
+    detalles.forEach(d => {
+      d.empleadosActivos.forEach(nombre => {
+        if (!mapa[nombre]) mapa[nombre] = { id: nombre, nombre, total: 0, cuentas: 0 }
+        mapa[nombre].total += d.porPersona
+        mapa[nombre].cuentas += 1
+      })
+    })
+    const resumen = Object.values(mapa).sort((a, b) => b.total - a.total)
+
+    setDetallePropinas(detalles)
+    setResumenPropinas(resumen)
+    setTotalPropinas(cuentas.reduce((s: number, c: any) => s + (c.propina ?? 0), 0))
+    setLoadingProp(false)
+  }
+
   function pedirToken(data: ModalData) {
     setTokenInput('')
     setTokenError('')
@@ -275,17 +364,21 @@ export default function CierrePage() {
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-gray-800 pb-0">
-        {(['turnos', 'resumen'] as const).map(t => (
+        {([
+          { key: 'turnos', label: '📋 Turnos del día' },
+          { key: 'resumen', label: '📊 Resumen horarios' },
+          { key: 'propinas', label: '💰 Propinas' },
+        ] as const).map(t => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
+            key={t.key}
+            onClick={() => setTab(t.key)}
             className={`px-5 py-2.5 text-sm font-medium rounded-t-xl transition -mb-px border border-b-0 ${
-              tab === t
+              tab === t.key
                 ? 'bg-gray-900 border-gray-700 text-white'
                 : 'border-transparent text-gray-500 hover:text-gray-300'
             }`}
           >
-            {t === 'turnos' ? '📋 Turnos del día' : '📊 Resumen horarios'}
+            {t.label}
           </button>
         ))}
       </div>
@@ -544,6 +637,121 @@ export default function CierrePage() {
                   </div>
                 )}
               </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ═══ TAB: PROPINAS ═══ */}
+      {tab === 'propinas' && (
+        <div className="space-y-4">
+          {/* Filtro período */}
+          <div className="flex gap-2">
+            {([
+              { key: 'hoy', label: 'Hoy' },
+              { key: 'semana', label: 'Esta semana' },
+              { key: 'mes', label: 'Este mes' },
+            ] as const).map(p => (
+              <button key={p.key} onClick={() => setPeriodoProp(p.key)}
+                className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
+                  periodoProp === p.key ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                }`}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {loadingProp ? (
+            <div className="flex justify-center py-16">
+              <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : (
+            <>
+              {/* Resumen total */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-2xl p-4 text-center">
+                  <p className="text-2xl font-bold text-yellow-400">${totalPropinas.toFixed(2)}</p>
+                  <p className="text-gray-400 text-sm">Total propinas</p>
+                </div>
+                <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4 text-center">
+                  <p className="text-2xl font-bold text-blue-400">{detallePropinas.length}</p>
+                  <p className="text-gray-400 text-sm">Cuentas con propina</p>
+                </div>
+                <div className="bg-green-500/10 border border-green-500/20 rounded-2xl p-4 text-center">
+                  <p className="text-2xl font-bold text-green-400">{resumenPropinas.length}</p>
+                  <p className="text-gray-400 text-sm">Empleados participaron</p>
+                </div>
+              </div>
+
+              {/* Distribución por empleado */}
+              <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+                <div className="px-5 py-3 border-b border-gray-800">
+                  <p className="font-semibold text-white text-sm">💰 Distribución por empleado</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Propina dividida entre quienes estaban activos al momento del cobro</p>
+                </div>
+                {resumenPropinas.length === 0 ? (
+                  <div className="py-12 text-center text-gray-500">No hay propinas registradas en este período</div>
+                ) : (
+                  <div className="divide-y divide-gray-800">
+                    {resumenPropinas.map((e, i) => (
+                      <div key={e.id} className="px-5 py-3 flex items-center gap-4">
+                        <span className="text-gray-600 text-sm w-6 text-center">{i + 1}</span>
+                        <div className="w-9 h-9 rounded-xl bg-yellow-500/20 flex items-center justify-center text-yellow-400 font-bold text-sm shrink-0">
+                          {e.nombre.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-medium text-white text-sm">{e.nombre}</p>
+                          <p className="text-xs text-gray-500">{e.cuentas} cuentas participadas</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-yellow-400 text-lg">${e.total.toFixed(2)}</p>
+                          <p className="text-xs text-gray-500">a recibir</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Detalle por cuenta */}
+              {detallePropinas.length > 0 && (
+                <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+                  <div className="px-5 py-3 border-b border-gray-800">
+                    <p className="font-semibold text-white text-sm">📋 Detalle por cuenta</p>
+                  </div>
+                  <div className="divide-y divide-gray-800">
+                    {detallePropinas.map(d => (
+                      <div key={d.id} className="px-5 py-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <div>
+                            <span className="text-white text-sm font-medium">Cuenta cobrada</span>
+                            <span className="text-gray-500 text-xs ml-2">
+                              {new Date(d.cerrada_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                            <span className="text-gray-600 text-xs ml-2">Mesero: {d.mesero}</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-yellow-400 font-bold">${d.propina.toFixed(2)}</span>
+                            <span className="text-gray-500 text-xs ml-1">propina</span>
+                          </div>
+                        </div>
+                        {d.empleadosActivos.length > 0 ? (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            <span className="text-xs text-gray-600">÷ entre:</span>
+                            {d.empleadosActivos.map(n => (
+                              <span key={n} className="text-xs bg-yellow-500/10 text-yellow-400 px-2 py-0.5 rounded-full">
+                                {n} (${d.porPersona.toFixed(2)})
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-orange-400 mt-1">⚠️ Sin empleados con turno activo — propina sin asignar</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
