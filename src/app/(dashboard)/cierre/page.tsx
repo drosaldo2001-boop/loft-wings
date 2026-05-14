@@ -46,6 +46,15 @@ function duracion(inicio: string, fin?: string | null): string {
   return `${h}h ${m}m`
 }
 
+function TiempoVivo({ inicio }: { inicio: string }) {
+  const [texto, setTexto] = useState(() => duracion(inicio))
+  useEffect(() => {
+    const id = setInterval(() => setTexto(duracion(inicio)), 30000)
+    return () => clearInterval(id)
+  }, [inicio])
+  return <span>{texto}</span>
+}
+
 function horasDecimal(inicio: string, fin: string | null): number {
   if (!fin) return 0
   return (new Date(fin).getTime() - new Date(inicio).getTime()) / 3600000
@@ -173,39 +182,35 @@ export default function CierrePage() {
     setLoadingRes(false)
   }
 
-  const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-  async function turnoFetch(path: string, method: string, body: object) {
-    const res = await fetch(`${SUPA_URL}/rest/v1/${path}`, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SUPA_KEY,
-        'Authorization': `Bearer ${SUPA_KEY}`,
-        'Prefer': 'return=minimal',
-      },
-      body: JSON.stringify(body),
-    })
-    if (!res.ok) {
-      const txt = await res.text()
-      throw new Error(`${res.status}: ${txt}`)
-    }
-  }
-
   async function abrirTurno(empleadoId: string) {
     const session = getSession()
     if (!session) { alert('❌ No hay sesión activa'); return }
     setProcesando(empleadoId)
+    const inicio = new Date().toISOString()
     try {
-      await turnoFetch('turnos', 'POST', {
-        usuario_id: empleadoId,
-        inicio: new Date().toISOString(),
-        abierto_por: session.id,
+      const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/turnos`
+      const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': key,
+          'Authorization': `Bearer ${key}`,
+          'Prefer': 'return=representation',
+        },
+        body: JSON.stringify({ usuario_id: empleadoId, inicio, abierto_por: session.id }),
       })
-      await cargar()
+      const text = await res.text()
+      if (!res.ok) {
+        alert(`❌ Error ${res.status}: ${text}`)
+        return
+      }
+      const [row] = JSON.parse(text)
+      setEmpleados(prev => prev.map(e =>
+        e.id === empleadoId ? { ...e, turno: { id: row.id, inicio: row.inicio, fin: null } } : e
+      ))
     } catch (e: any) {
-      alert(`❌ Error al abrir turno: ${e?.message ?? e}`)
+      alert(`❌ Excepción: ${e?.message ?? e}`)
     } finally {
       setProcesando(null)
     }
@@ -215,14 +220,30 @@ export default function CierrePage() {
     const session = getSession()
     if (!session) { alert('❌ No hay sesión activa'); return }
     setProcesando(empleadoId)
+    const fin = new Date().toISOString()
     try {
-      await turnoFetch(`turnos?id=eq.${turnoId}`, 'PATCH', {
-        fin: new Date().toISOString(),
-        cerrado_por: session.id,
+      const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/turnos?id=eq.${turnoId}`
+      const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      const res = await fetch(url, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': key,
+          'Authorization': `Bearer ${key}`,
+          'Prefer': 'return=representation',
+        },
+        body: JSON.stringify({ fin, cerrado_por: session.id }),
       })
-      await cargar()
+      const text = await res.text()
+      if (!res.ok) {
+        alert(`❌ Error ${res.status}: ${text}`)
+        return
+      }
+      setEmpleados(prev => prev.map(e =>
+        e.id === empleadoId ? { ...e, turno: e.turno ? { ...e.turno, fin } : null } : e
+      ))
     } catch (e: any) {
-      alert(`❌ Error al cerrar turno: ${e?.message ?? e}`)
+      alert(`❌ Excepción: ${e?.message ?? e}`)
     } finally {
       setProcesando(null)
     }
@@ -332,7 +353,7 @@ export default function CierrePage() {
                           {activo && (
                             <span className="flex items-center gap-1 text-xs text-green-400">
                               <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse inline-block" />
-                              {duracion(emp.turno!.inicio)}
+                              <TiempoVivo inicio={emp.turno!.inicio} />
                             </span>
                           )}
                           {cerrado && (
