@@ -80,6 +80,12 @@ export default function CierrePage() {
   const [procesando, setProcesando] = useState<string | null>(null)
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0])
 
+  // ── MODAL TOKEN ──
+  type ModalData = { empleadoId: string; nombre: string; accion: 'abrir' | 'cerrar'; turnoId?: string }
+  const [modal, setModal] = useState<ModalData | null>(null)
+  const [tokenInput, setTokenInput] = useState('')
+  const [tokenError, setTokenError] = useState('')
+
   // ── TAB RESUMEN ──
   const [empleadosList, setEmpleadosList] = useState<{ id: string; nombre: string; rol: string }[]>([])
   const [empleadoSel, setEmpleadoSel] = useState<string>('')
@@ -193,52 +199,45 @@ export default function CierrePage() {
     setLoadingRes(false)
   }
 
-  async function abrirTurno(empleadoId: string) {
-    const session = getSession()
-    if (!session) { alert('❌ No hay sesión activa'); return }
-    setProcesando(empleadoId)
-    try {
-      const res = await fetch('/api/turnos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          usuario_id: empleadoId,
-          inicio: new Date().toISOString(),
-          abierto_por: session.id,
-        }),
-      })
-      const json = await res.json()
-      if (!res.ok) {
-        alert(`❌ Error: ${json.error}`)
-      } else {
-        setEmpleados(prev => prev.map(e =>
-          e.id === empleadoId ? { ...e, turno: { id: json.id, inicio: json.inicio, fin: null } } : e
-        ))
-      }
-    } catch (e: any) {
-      alert(`❌ Excepción: ${e?.message ?? e}`)
-    } finally {
-      setProcesando(null)
-    }
+  function pedirToken(data: ModalData) {
+    setTokenInput('')
+    setTokenError('')
+    setModal(data)
   }
 
-  async function cerrarTurno(turnoId: string, empleadoId: string) {
+  async function confirmarFichaje() {
+    if (!modal) return
+    if (tokenInput !== tokenActual) {
+      setTokenError('❌ Código incorrecto — revisa el código en pantalla')
+      return
+    }
+    setModal(null)
     const session = getSession()
-    if (!session) { alert('❌ No hay sesión activa'); return }
-    setProcesando(empleadoId)
-    const fin = new Date().toISOString()
+    if (!session) return
+    setProcesando(modal.empleadoId)
     try {
-      const res = await fetch('/api/turnos', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: turnoId, fin, cerrado_por: session.id }),
-      })
-      const json = await res.json()
-      if (!res.ok) {
-        alert(`❌ Error: ${json.error}`)
+      if (modal.accion === 'abrir') {
+        const res = await fetch('/api/turnos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ usuario_id: modal.empleadoId, inicio: new Date().toISOString(), abierto_por: session.id }),
+        })
+        const json = await res.json()
+        if (!res.ok) alert(`❌ Error: ${json.error}`)
+        else setEmpleados(prev => prev.map(e =>
+          e.id === modal.empleadoId ? { ...e, turno: { id: json.id, inicio: json.inicio, fin: null } } : e
+        ))
       } else {
-        setEmpleados(prev => prev.map(e =>
-          e.id === empleadoId ? { ...e, turno: e.turno ? { ...e.turno, fin } : null } : e
+        const fin = new Date().toISOString()
+        const res = await fetch('/api/turnos', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: modal.turnoId, fin, cerrado_por: session.id }),
+        })
+        const json = await res.json()
+        if (!res.ok) alert(`❌ Error: ${json.error}`)
+        else setEmpleados(prev => prev.map(e =>
+          e.id === modal.empleadoId ? { ...e, turno: e.turno ? { ...e.turno, fin } : null } : e
         ))
       }
     } catch (e: any) {
@@ -394,13 +393,13 @@ export default function CierrePage() {
                       {esHoy && (
                         <div className="shrink-0">
                           {sinTurno && (
-                            <button onClick={() => abrirTurno(emp.id)} disabled={cargando}
+                            <button onClick={() => pedirToken({ empleadoId: emp.id, nombre: emp.nombre, accion: 'abrir' })} disabled={cargando}
                               className="bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-xl transition active:scale-95">
                               {cargando ? '...' : '▶ Abrir'}
                             </button>
                           )}
                           {activo && (
-                            <button onClick={() => cerrarTurno(emp.turno!.id, emp.id)} disabled={cargando}
+                            <button onClick={() => pedirToken({ empleadoId: emp.id, nombre: emp.nombre, accion: 'cerrar', turnoId: emp.turno!.id })} disabled={cargando}
                               className="bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 disabled:opacity-50 text-red-400 text-sm font-medium px-4 py-2 rounded-xl transition active:scale-95">
                               {cargando ? '...' : '■ Cerrar'}
                             </button>
@@ -547,6 +546,52 @@ export default function CierrePage() {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* ── MODAL TOKEN ── */}
+      {modal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-sm space-y-5">
+            <div className="text-center">
+              <p className="text-lg font-bold text-white">
+                {modal.accion === 'abrir' ? '▶ Abrir turno' : '■ Cerrar turno'}
+              </p>
+              <p className="text-gray-400 text-sm mt-1">{modal.nombre}</p>
+            </div>
+
+            <div className="bg-gray-800 rounded-xl p-3 text-center">
+              <p className="text-xs text-gray-500 mb-1">Código activo · expira en {segs}s</p>
+              <p className="text-3xl font-mono font-bold text-orange-400 tracking-widest">{tokenActual}</p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm text-gray-400">Ingresa el código para confirmar</label>
+              <input
+                autoFocus
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                value={tokenInput}
+                onChange={e => { setTokenInput(e.target.value.replace(/\D/g, '')); setTokenError('') }}
+                onKeyDown={e => e.key === 'Enter' && confirmarFichaje()}
+                placeholder="000000"
+                className="w-full bg-gray-800 border border-gray-700 text-white text-center text-2xl font-mono tracking-widest rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500"
+              />
+              {tokenError && <p className="text-red-400 text-sm">{tokenError}</p>}
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setModal(null)}
+                className="flex-1 py-3 rounded-xl border border-gray-700 text-gray-400 hover:bg-gray-800 transition">
+                Cancelar
+              </button>
+              <button onClick={confirmarFichaje} disabled={tokenInput.length !== 6}
+                className={`flex-1 py-3 rounded-xl font-bold text-white transition disabled:opacity-40 ${modal.accion === 'abrir' ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}`}>
+                Confirmar
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
