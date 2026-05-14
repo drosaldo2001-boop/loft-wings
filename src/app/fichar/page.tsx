@@ -49,7 +49,10 @@ export default function FicharPage() {
   const tieneturno = !!empleadoSel?.turno
 
   async function fichar() {
-    if (!empleadoId || !token) return
+    if (!empleadoId || token.length !== 6) {
+      setMsg({ tipo: 'error', texto: '⚠️ Ingresa el código de 6 dígitos' })
+      return
+    }
     setLoading(true)
     setMsg(null)
     try {

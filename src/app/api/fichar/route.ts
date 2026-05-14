@@ -13,8 +13,11 @@ export async function POST(req: NextRequest) {
   try {
     const { empleado_id, token, accion, turno_id } = await req.json()
 
+    if (!token || token.length !== 6) {
+      return NextResponse.json({ error: 'Token requerido (6 dígitos)' }, { status: 400 })
+    }
     if (!validarToken(token)) {
-      return NextResponse.json({ error: 'Token inválido o expirado' }, { status: 401 })
+      return NextResponse.json({ error: '❌ Código incorrecto — pide el código al administrador' }, { status: 401 })
     }
 
     if (accion === 'entrada') {
