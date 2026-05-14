@@ -186,29 +186,24 @@ export default function CierrePage() {
     const session = getSession()
     if (!session) { alert('❌ No hay sesión activa'); return }
     setProcesando(empleadoId)
-    const inicio = new Date().toISOString()
     try {
-      const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/turnos`
-      const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      const res = await fetch(url, {
+      const res = await fetch('/api/turnos', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': key,
-          'Authorization': `Bearer ${key}`,
-          'Prefer': 'return=representation',
-        },
-        body: JSON.stringify({ usuario_id: empleadoId, inicio, abierto_por: session.id }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          usuario_id: empleadoId,
+          inicio: new Date().toISOString(),
+          abierto_por: session.id,
+        }),
       })
-      const text = await res.text()
+      const json = await res.json()
       if (!res.ok) {
-        alert(`❌ Error ${res.status}: ${text}`)
-        return
+        alert(`❌ Error: ${json.error}`)
+      } else {
+        setEmpleados(prev => prev.map(e =>
+          e.id === empleadoId ? { ...e, turno: { id: json.id, inicio: json.inicio, fin: null } } : e
+        ))
       }
-      const [row] = JSON.parse(text)
-      setEmpleados(prev => prev.map(e =>
-        e.id === empleadoId ? { ...e, turno: { id: row.id, inicio: row.inicio, fin: null } } : e
-      ))
     } catch (e: any) {
       alert(`❌ Excepción: ${e?.message ?? e}`)
     } finally {
@@ -222,26 +217,19 @@ export default function CierrePage() {
     setProcesando(empleadoId)
     const fin = new Date().toISOString()
     try {
-      const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/turnos?id=eq.${turnoId}`
-      const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      const res = await fetch(url, {
+      const res = await fetch('/api/turnos', {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': key,
-          'Authorization': `Bearer ${key}`,
-          'Prefer': 'return=representation',
-        },
-        body: JSON.stringify({ fin, cerrado_por: session.id }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: turnoId, fin, cerrado_por: session.id }),
       })
-      const text = await res.text()
+      const json = await res.json()
       if (!res.ok) {
-        alert(`❌ Error ${res.status}: ${text}`)
-        return
+        alert(`❌ Error: ${json.error}`)
+      } else {
+        setEmpleados(prev => prev.map(e =>
+          e.id === empleadoId ? { ...e, turno: e.turno ? { ...e.turno, fin } : null } : e
+        ))
       }
-      setEmpleados(prev => prev.map(e =>
-        e.id === empleadoId ? { ...e, turno: e.turno ? { ...e.turno, fin } : null } : e
-      ))
     } catch (e: any) {
       alert(`❌ Excepción: ${e?.message ?? e}`)
     } finally {
