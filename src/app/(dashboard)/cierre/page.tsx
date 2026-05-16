@@ -134,9 +134,15 @@ export default function CierrePage() {
     if (!empleadoSel && usuarios.length > 0) setEmpleadoSel(usuarios[0].id)
 
     const ids = usuarios.map(u => u.id)
-    const [{ data: turnos }, { data: cuentas }] = await Promise.all([
+    const [{ data: turnosAbiertos }, { data: turnosCerrados }, { data: cuentas }] = await Promise.all([
+      // Turnos sin salida — siempre visibles sin importar fecha
       supabase.from('turnos').select('id, usuario_id, inicio, fin')
         .in('usuario_id', ids)
+        .is('fin', null),
+      // Turnos cerrados del día seleccionado
+      supabase.from('turnos').select('id, usuario_id, inicio, fin')
+        .in('usuario_id', ids)
+        .not('fin', 'is', null)
         .gte('inicio', dia.toISOString())
         .lt('inicio', siguiente.toISOString()),
       supabase.from('cuentas').select('total, propina, mesero_id')
@@ -144,6 +150,10 @@ export default function CierrePage() {
         .gte('cerrada_at', dia.toISOString())
         .lt('cerrada_at', siguiente.toISOString()),
     ])
+    // Combinar: turnos abiertos + turnos cerrados del día (sin duplicados)
+    const abiertosIds = new Set((turnosAbiertos ?? []).map((t: any) => t.usuario_id))
+    const cerradosHoy = (turnosCerrados ?? []).filter((t: any) => !abiertosIds.has(t.usuario_id))
+    const turnos = [...(turnosAbiertos ?? []), ...cerradosHoy]
 
     const result: Empleado[] = usuarios.map(u => {
       const turno = (turnos ?? []).find((t: any) => t.usuario_id === u.id) ?? null
