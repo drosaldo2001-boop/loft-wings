@@ -7,11 +7,13 @@ import { CATEGORIAS, SALSAS_ALITAS } from '@/lib/constants'
 import type { Database, EstadoPedido } from '@/types/database'
 
 type Mesa = Database['public']['Tables']['mesas']['Row']
-type Producto = Database['public']['Tables']['productos']['Row']
+type ProductoBase = Database['public']['Tables']['productos']['Row']
+type Producto = ProductoBase & { grupos_opciones?: { nombre: string; opciones: { nombre: string; precio: number }[] }[] }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Cuenta = any
 
-type PedidoItem = { producto: Producto | null; promoData?: Promocion; cantidad: number; notas: string; modificaciones: string[] }
+type ItemExtra = { nombre: string; precio: number }
+type PedidoItem = { producto: Producto | null; promoData?: Promocion; cantidad: number; notas: string; modificaciones: string[]; extras?: ItemExtra[] }
 type Vista = 'mesas' | 'abrirMesa' | 'selCuenta' | 'menu' | 'carrito' | 'ia' | 'resumen'
 
 interface Promocion {
@@ -50,6 +52,8 @@ export default function MeseroPage() {
   const [cargando, setCargando] = useState(false)
   const [modalSalsas, setModalSalsas] = useState<{ producto: Producto; maxSalsas: number } | null>(null)
   const [salsasSeleccionadas, setSalsasSeleccionadas] = useState<string[]>([])
+  const [modalExtras, setModalExtras] = useState<{ producto: Producto; salsas: string[] } | null>(null)
+  const [extrasSeleccionados, setExtrasSeleccionados] = useState<ItemExtra[]>([])
   const [pedidosActivos, setPedidosActivos] = useState<PedidoEstado[]>([])
   const [cargandoResumen, setCargandoResumen] = useState(false)
   const [promociones, setPromociones] = useState<Promocion[]>([])
@@ -218,23 +222,27 @@ export default function MeseroPage() {
 
   function clickAgregar(producto: Producto) {
     const max = maxSalsasParaProducto(producto.nombre)
+    const tieneExtras = (producto.grupos_opciones ?? []).length > 0
     if (((producto.categoria as string) === 'alitas' || (producto.categoria as string) === 'boneless') && max > 0) {
       setSalsasSeleccionadas([])
       setModalSalsas({ producto, maxSalsas: max })
+    } else if (tieneExtras) {
+      setExtrasSeleccionados([])
+      setModalExtras({ producto, salsas: [] })
     } else {
-      agregarAlCarrito(producto, [])
+      agregarAlCarrito(producto, [], [])
     }
   }
 
-  function agregarAlCarrito(producto: Producto, modificaciones: string[]) {
+  function agregarAlCarrito(producto: Producto, modificaciones: string[], extras: ItemExtra[]) {
     setCarrito(prev => {
-      const idx = prev.findIndex(i => i.producto?.id === producto.id && JSON.stringify(i.modificaciones) === JSON.stringify(modificaciones))
+      const idx = prev.findIndex(i => i.producto?.id === producto.id && JSON.stringify(i.modificaciones) === JSON.stringify(modificaciones) && JSON.stringify(i.extras) === JSON.stringify(extras))
       if (idx >= 0) {
         const nuevo = [...prev]
         nuevo[idx] = { ...nuevo[idx], cantidad: nuevo[idx].cantidad + 1 }
         return nuevo
       }
-      return [...prev, { producto, cantidad: 1, notas: '', modificaciones }]
+      return [...prev, { producto, cantidad: 1, notas: '', modificaciones, extras }]
     })
   }
 
@@ -253,9 +261,33 @@ export default function MeseroPage() {
 
   function confirmarSalsas() {
     if (!modalSalsas) return
-    agregarAlCarrito(modalSalsas.producto, salsasSeleccionadas)
-    setModalSalsas(null)
-    setSalsasSeleccionadas([])
+    const tieneExtras = (modalSalsas.producto.grupos_opciones ?? []).length > 0
+    if (tieneExtras) {
+      // Pasar a modal de extras con salsas ya seleccionadas
+      setModalExtras({ producto: modalSalsas.producto, salsas: salsasSeleccionadas })
+      setExtrasSeleccionados([])
+      setModalSalsas(null)
+      setSalsasSeleccionadas([])
+    } else {
+      agregarAlCarrito(modalSalsas.producto, salsasSeleccionadas, [])
+      setModalSalsas(null)
+      setSalsasSeleccionadas([])
+    }
+  }
+
+  function confirmarExtras() {
+    if (!modalExtras) return
+    agregarAlCarrito(modalExtras.producto, modalExtras.salsas, extrasSeleccionados)
+    setModalExtras(null)
+    setExtrasSeleccionados([])
+  }
+
+  function toggleExtra(extra: ItemExtra) {
+    setExtrasSeleccionados(prev =>
+      prev.some(e => e.nombre === extra.nombre)
+        ? prev.filter(e => e.nombre !== extra.nombre)
+        : [...prev, extra]
+    )
   }
 
   function toggleSalsa(salsa: string) {
@@ -287,7 +319,7 @@ export default function MeseroPage() {
         cuenta_id: cuentaActiva.id,
         producto_id: item.producto?.id ?? null,
         cantidad: item.cantidad,
-        precio_unitario: item.promoData?.precio ?? item.producto?.precio ?? 0,
+        precio_unitario: (item.promoData?.precio ?? item.producto?.precio ?? 0) + (item.extras?.reduce((s, e) => s + e.precio, 0) ?? 0),
         modificaciones: item.modificaciones,
         notas: item.promoData ? `[Promo] ${item.promoData.nombre}` : (item.notas || null),
         estado: 'nuevo' as EstadoPedido,
@@ -300,7 +332,7 @@ export default function MeseroPage() {
       return
     }
 
-    const subtotalNuevo = carrito.reduce((s, i) => s + (i.promoData?.precio ?? i.producto?.precio ?? 0) * i.cantidad, 0)
+    const subtotalNuevo = carrito.reduce((s, i) => s + ((i.promoData?.precio ?? i.producto?.precio ?? 0) + (i.extras?.reduce((a, e) => a + e.precio, 0) ?? 0)) * i.cantidad, 0)
     const nuevoSubtotal = (cuentaActiva.subtotal ?? 0) + subtotalNuevo
     await supabase.from('cuentas').update({
       subtotal: nuevoSubtotal,
@@ -354,7 +386,7 @@ export default function MeseroPage() {
     }
   }
 
-  const totalCarrito = carrito.reduce((s, i) => s + (i.promoData?.precio ?? i.producto?.precio ?? 0) * i.cantidad, 0)
+  const totalCarrito = carrito.reduce((s, i) => s + ((i.promoData?.precio ?? i.producto?.precio ?? 0) + (i.extras?.reduce((a, e) => a + e.precio, 0) ?? 0)) * i.cantidad, 0)
   const productosFiltrados = productos.filter(p => p.categoria === categoriaActiva)
 
   const DIAS: Record<string, string> = {
@@ -712,7 +744,7 @@ export default function MeseroPage() {
             ) : (
               carrito.map((item, idx) => {
                 const nombre = item.promoData?.nombre ?? item.producto?.nombre ?? ''
-                const precio = item.promoData?.precio ?? item.producto?.precio ?? 0
+                const precio = (item.promoData?.precio ?? item.producto?.precio ?? 0) + (item.extras?.reduce((a, e) => a + e.precio, 0) ?? 0)
                 return (
                   <div key={idx} className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-center gap-3">
                     <div className="flex-1">
@@ -728,7 +760,7 @@ export default function MeseroPage() {
                     <div className="flex items-center gap-2">
                       <button onClick={() => quitarDelCarrito(idx)} className="w-8 h-8 bg-gray-800 rounded-lg text-white flex items-center justify-center hover:bg-red-500/20">−</button>
                       <span className="text-white font-bold w-6 text-center">{item.cantidad}</span>
-                      <button onClick={() => item.promoData ? agregarPromo(item.promoData) : (item.producto && agregarAlCarrito(item.producto, item.modificaciones))} className="w-8 h-8 bg-orange-500/20 rounded-lg text-orange-400 flex items-center justify-center hover:bg-orange-500/30">+</button>
+                      <button onClick={() => item.promoData ? agregarPromo(item.promoData) : (item.producto && agregarAlCarrito(item.producto, item.modificaciones, item.extras ?? []))} className="w-8 h-8 bg-orange-500/20 rounded-lg text-orange-400 flex items-center justify-center hover:bg-orange-500/30">+</button>
                     </div>
                   </div>
                 )
@@ -955,6 +987,53 @@ export default function MeseroPage() {
                 className="flex-1 py-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold transition active:scale-95"
               >
                 {salsasSeleccionadas.length === 0 ? 'Sin salsa' : '✓ Agregar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal extras opcionales ── */}
+      {modalExtras && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-sm p-5 space-y-4">
+            <div>
+              <h3 className="font-bold text-white text-lg">➕ Extras opcionales</h3>
+              <p className="text-sm text-gray-400">{modalExtras.producto.nombre}</p>
+            </div>
+
+            <div className="space-y-2">
+              {(modalExtras.producto.grupos_opciones?.[0]?.opciones ?? []).map(extra => {
+                const sel = extrasSeleccionados.some(e => e.nombre === extra.nombre)
+                return (
+                  <button
+                    key={extra.nombre}
+                    onClick={() => toggleExtra(extra)}
+                    className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border text-sm font-medium transition ${
+                      sel ? 'bg-orange-500/20 border-orange-500/50 text-orange-300' : 'bg-gray-800 border-gray-700 text-white hover:border-gray-600'
+                    }`}
+                  >
+                    <span>{sel ? '✓ ' : ''}{extra.nombre}</span>
+                    <span className={sel ? 'text-orange-400 font-bold' : 'text-green-400'}>+${extra.precio}</span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {extrasSeleccionados.length > 0 && (
+              <p className="text-xs text-orange-400 text-center">
+                +${extrasSeleccionados.reduce((s, e) => s + e.precio, 0)} adicional
+              </p>
+            )}
+
+            <div className="flex gap-3">
+              <button onClick={() => { setModalExtras(null); setExtrasSeleccionados([]) }}
+                className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-400 font-medium hover:bg-gray-700 transition">
+                Cancelar
+              </button>
+              <button onClick={confirmarExtras}
+                className="flex-1 py-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold transition active:scale-95">
+                {extrasSeleccionados.length === 0 ? 'Sin extras' : '✓ Agregar'}
               </button>
             </div>
           </div>

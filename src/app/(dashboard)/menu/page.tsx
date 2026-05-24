@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { CATEGORIAS } from '@/lib/constants'
 
+interface Extra { nombre: string; precio: number }
+
 interface Producto {
   id: string
   nombre: string
@@ -15,6 +17,7 @@ interface Producto {
   tiempo_prep_min: number
   es_popular: boolean
   alergenos: string[]
+  grupos_opciones?: { nombre: string; opciones: Extra[] }[]
 }
 
 const CATEGORIAS_CON_TODAS = [{ id: 'todas', label: 'Todas', emoji: '📋' }, ...CATEGORIAS]
@@ -37,6 +40,11 @@ export default function MenuPage() {
   const [form, setForm] = useState(FORM_VACIO)
   const [confirmarEliminar, setConfirmarEliminar] = useState<string | null>(null)
 
+  // Extras opcionales
+  const [extras, setExtras] = useState<Extra[]>([])
+  const [extraNombre, setExtraNombre] = useState('')
+  const [extraPrecio, setExtraPrecio] = useState('')
+
   const fetchProductos = useCallback(async () => {
     const { data } = await supabase.from('productos').select('*').order('categoria').order('nombre')
     if (data) setProductos(data as Producto[])
@@ -47,6 +55,9 @@ export default function MenuPage() {
 
   function abrirNuevo() {
     setForm(FORM_VACIO)
+    setExtras([])
+    setExtraNombre('')
+    setExtraPrecio('')
     setModalProducto('nuevo')
   }
 
@@ -61,12 +72,26 @@ export default function MenuPage() {
       es_popular: p.es_popular,
       alergenos: p.alergenos.join(', '),
     })
+    const extrasGuardados = p.grupos_opciones?.[0]?.opciones ?? []
+    setExtras(extrasGuardados)
+    setExtraNombre('')
+    setExtraPrecio('')
     setModalProducto(p)
+  }
+
+  function agregarExtra() {
+    if (!extraNombre.trim()) return
+    setExtras(prev => [...prev, { nombre: extraNombre.trim(), precio: parseFloat(extraPrecio) || 0 }])
+    setExtraNombre('')
+    setExtraPrecio('')
   }
 
   async function guardar() {
     if (!form.nombre.trim() || !form.precio) return
     setGuardando(true)
+    const grupos_opciones = extras.length > 0
+      ? [{ nombre: 'Extras opcionales', opciones: extras }]
+      : []
     const payload = {
       nombre: form.nombre.trim(),
       descripcion: form.descripcion.trim(),
@@ -76,6 +101,7 @@ export default function MenuPage() {
       tiempo_prep_min: parseInt(form.tiempo_prep_min) || 15,
       es_popular: form.es_popular,
       alergenos: form.alergenos ? form.alergenos.split(',').map(a => a.trim()).filter(Boolean) : [],
+      grupos_opciones,
     }
 
     if (modalProducto === 'nuevo') {
@@ -290,6 +316,49 @@ export default function MenuPage() {
                 </div>
                 <span className="text-sm text-gray-300">⭐ Marcar como popular</span>
               </label>
+
+              {/* ── EXTRAS OPCIONALES ── */}
+              <div className="border-t border-gray-800 pt-3 space-y-2">
+                <label className="text-xs text-gray-400 font-medium block">➕ Extras opcionales (con costo adicional)</label>
+                <p className="text-xs text-gray-600">Ej: "Bebida +$50", "Papas +$35", "Boneless 6 pz +$80"</p>
+
+                {/* Lista de extras actuales */}
+                {extras.length > 0 && (
+                  <div className="space-y-1">
+                    {extras.map((e, i) => (
+                      <div key={i} className="flex items-center gap-2 bg-gray-800 rounded-xl px-3 py-2">
+                        <span className="flex-1 text-white text-sm">{e.nombre}</span>
+                        <span className="text-green-400 text-sm font-medium">+${e.precio}</span>
+                        <button onClick={() => setExtras(prev => prev.filter((_, j) => j !== i))}
+                          className="text-red-400 hover:text-red-300 text-xs px-1">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Agregar nuevo extra */}
+                <div className="flex gap-2">
+                  <input
+                    value={extraNombre}
+                    onChange={e => setExtraNombre(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && agregarExtra()}
+                    placeholder="Nombre del extra"
+                    className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-white text-sm placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                  <input
+                    type="number"
+                    value={extraPrecio}
+                    onChange={e => setExtraPrecio(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && agregarExtra()}
+                    placeholder="$0"
+                    className="w-20 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                  <button onClick={agregarExtra}
+                    className="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-xl text-sm font-bold transition">
+                    +
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className="flex gap-3 pt-1">
