@@ -319,10 +319,10 @@ export default function MenuPage() {
 
               {/* ── EXTRAS OPCIONALES ── */}
               <div className="border-t border-gray-800 pt-3 space-y-2">
-                <label className="text-xs text-gray-400 font-medium block">➕ Extras opcionales (con costo adicional)</label>
-                <p className="text-xs text-gray-600">Ej: "Bebida +$50", "Papas +$35", "Boneless 6 pz +$80"</p>
+                <label className="text-xs text-gray-400 font-medium block">➕ Extras opcionales</label>
+                <p className="text-xs text-gray-600">Selecciona productos del menú que el cliente puede agregar al ordenar este platillo</p>
 
-                {/* Lista de extras actuales */}
+                {/* Lista de extras ya agregados */}
                 {extras.length > 0 && (
                   <div className="space-y-1">
                     {extras.map((e, i) => (
@@ -330,31 +330,46 @@ export default function MenuPage() {
                         <span className="flex-1 text-white text-sm">{e.nombre}</span>
                         <span className="text-green-400 text-sm font-medium">+${e.precio}</span>
                         <button onClick={() => setExtras(prev => prev.filter((_, j) => j !== i))}
-                          className="text-red-400 hover:text-red-300 text-xs px-1">✕</button>
+                          className="text-red-400 hover:text-red-300 text-xs px-2 py-1">✕</button>
                       </div>
                     ))}
                   </div>
                 )}
 
-                {/* Agregar nuevo extra */}
-                <div className="flex gap-2">
-                  <input
-                    value={extraNombre}
-                    onChange={e => setExtraNombre(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && agregarExtra()}
-                    placeholder="Nombre del extra"
-                    className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-white text-sm placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                  <input
-                    type="number"
-                    value={extraPrecio}
-                    onChange={e => setExtraPrecio(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && agregarExtra()}
-                    placeholder="$0"
-                    className="w-20 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                  <button onClick={agregarExtra}
-                    className="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-xl text-sm font-bold transition">
+                {/* Selector de producto + precio */}
+                <div className="flex gap-2 items-end">
+                  <div className="flex-1">
+                    <label className="text-xs text-gray-500 mb-1 block">Producto</label>
+                    <select
+                      value={extraNombre}
+                      onChange={e => {
+                        const p = productos.find(p => p.nombre === e.target.value)
+                        setExtraNombre(e.target.value)
+                        if (p) setExtraPrecio(String(p.precio))
+                      }}
+                      className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    >
+                      <option value="">— Elige un producto —</option>
+                      {productos.filter(p => modalProducto === 'nuevo' || (modalProducto as Producto)?.id !== p.id).map(p => (
+                        <option key={p.id} value={p.nombre}>{p.nombre} (${p.precio})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="w-24">
+                    <label className="text-xs text-gray-500 mb-1 block">Precio extra</label>
+                    <input
+                      type="number"
+                      value={extraPrecio}
+                      onChange={e => setExtraPrecio(e.target.value)}
+                      placeholder="$0"
+                      className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    />
+                  </div>
+                  <button
+                    onClick={agregarExtra}
+                    disabled={!extraNombre}
+                    className="bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white px-4 py-2 rounded-xl text-sm font-bold transition mb-0"
+                  >
                     +
                   </button>
                 </div>
