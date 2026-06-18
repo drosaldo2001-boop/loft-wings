@@ -54,6 +54,8 @@ export default function MeseroPage() {
   const [salsasSeleccionadas, setSalsasSeleccionadas] = useState<string[]>([])
   const [modalExtras, setModalExtras] = useState<{ producto: Producto; salsas: string[] } | null>(null)
   const [extrasSeleccionados, setExtrasSeleccionados] = useState<ItemExtra[]>([])
+  const [modalSalsasBoneless, setModalSalsasBoneless] = useState<{ producto: Producto; salsasAlitas: string[]; extras: ItemExtra[]; maxSalsas: number } | null>(null)
+  const [salsasBonelessSeleccionadas, setSalsasBonelessSeleccionadas] = useState<string[]>([])
   const [pedidosActivos, setPedidosActivos] = useState<PedidoEstado[]>([])
   const [cargandoResumen, setCargandoResumen] = useState(false)
   const [promociones, setPromociones] = useState<Promocion[]>([])
@@ -278,9 +280,32 @@ export default function MeseroPage() {
 
   function confirmarExtras() {
     if (!modalExtras) return
-    agregarAlCarrito(modalExtras.producto, modalExtras.salsas, extrasSeleccionados)
-    setModalExtras(null)
-    setExtrasSeleccionados([])
+    const tieneBoneless = extrasSeleccionados.some(e => e.nombre.toLowerCase().includes('boneless'))
+    if (tieneBoneless && (modalExtras.producto.categoria as string) === 'paquetes') {
+      // Abrir segundo modal de salsas para el boneless
+      const max = maxSalsasParaProducto(modalExtras.producto.nombre)
+      setModalSalsasBoneless({ producto: modalExtras.producto, salsasAlitas: modalExtras.salsas, extras: extrasSeleccionados, maxSalsas: max })
+      setSalsasBonelessSeleccionadas([])
+      setModalExtras(null)
+      setExtrasSeleccionados([])
+    } else {
+      agregarAlCarrito(modalExtras.producto, modalExtras.salsas, extrasSeleccionados)
+      setModalExtras(null)
+      setExtrasSeleccionados([])
+    }
+  }
+
+  function confirmarSalsasBoneless() {
+    if (!modalSalsasBoneless) return
+    const { producto, salsasAlitas, extras } = modalSalsasBoneless
+    // Combinar salsas: alitas primero, luego boneless etiquetadas
+    const mods = [
+      ...salsasAlitas.map(s => `Alitas: ${s}`),
+      ...salsasBonelessSeleccionadas.map(s => `Boneless: ${s}`),
+    ]
+    agregarAlCarrito(producto, mods, extras)
+    setModalSalsasBoneless(null)
+    setSalsasBonelessSeleccionadas([])
   }
 
   function toggleExtra(extra: ItemExtra) {
@@ -1031,6 +1056,65 @@ export default function MeseroPage() {
               <button onClick={confirmarExtras}
                 className="flex-1 py-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold transition active:scale-95">
                 {extrasSeleccionados.length === 0 ? 'Sin extras' : '✓ Agregar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal salsas para boneless del upgrade ── */}
+      {modalSalsasBoneless && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-sm p-5 space-y-4">
+            <div>
+              <h3 className="font-bold text-white text-lg">🔥 Salsas para el Boneless</h3>
+              <p className="text-sm text-gray-400">{modalSalsasBoneless.producto.nombre}</p>
+              <p className="text-xs text-orange-400 mt-1">
+                Puedes elegir hasta {modalSalsasBoneless.maxSalsas} salsa{modalSalsasBoneless.maxSalsas > 1 ? 's' : ''} · {salsasBonelessSeleccionadas.length}/{modalSalsasBoneless.maxSalsas} seleccionada{salsasBonelessSeleccionadas.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {SALSAS_ALITAS.map(salsa => {
+                const seleccionada = salsasBonelessSeleccionadas.includes(salsa)
+                const lleno = salsasBonelessSeleccionadas.length >= modalSalsasBoneless.maxSalsas && !seleccionada
+                return (
+                  <button
+                    key={salsa}
+                    onClick={() => {
+                      setSalsasBonelessSeleccionadas(prev => {
+                        if (prev.includes(salsa)) return prev.filter(s => s !== salsa)
+                        if (prev.length >= modalSalsasBoneless.maxSalsas) return prev
+                        return [...prev, salsa]
+                      })
+                    }}
+                    disabled={lleno}
+                    className={`px-3 py-3 rounded-xl text-sm font-medium text-left transition border-2 active:scale-95
+                      ${seleccionada
+                        ? 'bg-orange-500/20 border-orange-500 text-orange-300'
+                        : lleno
+                          ? 'bg-gray-800/50 border-gray-700 text-gray-600 cursor-not-allowed'
+                          : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-500'
+                      }`}
+                  >
+                    {seleccionada ? '✓ ' : ''}{salsa}
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => { setModalSalsasBoneless(null); setSalsasBonelessSeleccionadas([]) }}
+                className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-400 font-medium hover:bg-gray-700 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmarSalsasBoneless}
+                className="flex-1 py-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold transition active:scale-95"
+              >
+                {salsasBonelessSeleccionadas.length === 0 ? 'Sin salsa' : '✓ Agregar'}
               </button>
             </div>
           </div>
