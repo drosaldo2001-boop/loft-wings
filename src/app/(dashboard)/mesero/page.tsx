@@ -212,9 +212,9 @@ export default function MeseroPage() {
   }
 
   function maxSalsasParaProducto(nombre: string): number {
-    if (nombre.includes('10 pz')) return 1
-    if (nombre.includes('20 pz')) return 3
-    if (nombre.includes('30 pz') || nombre.includes('40 pz') || nombre.includes('50 pz')) return 4
+    if (nombre.includes('10 pz') || nombre === 'Paquete 1') return 1
+    if (nombre.includes('20 pz') || nombre === 'Paquete 2') return 3
+    if (nombre.includes('30 pz') || nombre.includes('40 pz') || nombre.includes('50 pz') || nombre === 'Paquete 3' || nombre === 'Paquete 4') return 4
     if (nombre.includes('250 gr')) return 1
     if (nombre.includes('500 gr')) return 2
     return 0
@@ -223,7 +223,8 @@ export default function MeseroPage() {
   function clickAgregar(producto: Producto) {
     const max = maxSalsasParaProducto(producto.nombre)
     const tieneExtras = (producto.grupos_opciones ?? []).length > 0
-    if (((producto.categoria as string) === 'alitas' || (producto.categoria as string) === 'boneless') && max > 0) {
+    const cat = producto.categoria as string
+    if ((cat === 'alitas' || cat === 'boneless' || cat === 'paquetes') && max > 0) {
       setSalsasSeleccionadas([])
       setModalSalsas({ producto, maxSalsas: max })
     } else if (tieneExtras) {
