@@ -50,9 +50,10 @@ export default function MeseroPage() {
   const [nombreCuenta, setNombreCuenta] = useState('')
   const [numPersonas, setNumPersonas] = useState(1)
   const [cargando, setCargando] = useState(false)
-  const [modalSalsas, setModalSalsas] = useState<{ producto: Producto; maxSalsas: number } | null>(null)
+  const [modalTipoBase, setModalTipoBase] = useState<{ producto: Producto } | null>(null)
+  const [modalSalsas, setModalSalsas] = useState<{ producto: Producto; maxSalsas: number; tipo?: 'alitas' | 'boneless' } | null>(null)
   const [salsasSeleccionadas, setSalsasSeleccionadas] = useState<string[]>([])
-  const [modalExtras, setModalExtras] = useState<{ producto: Producto; salsas: string[] } | null>(null)
+  const [modalExtras, setModalExtras] = useState<{ producto: Producto; salsas: string[]; tipo?: 'alitas' | 'boneless' } | null>(null)
   const [extrasSeleccionados, setExtrasSeleccionados] = useState<ItemExtra[]>([])
   const [modalSalsasBoneless, setModalSalsasBoneless] = useState<{ producto: Producto; salsasAlitas: string[]; extras: ItemExtra[]; maxSalsas: number } | null>(null)
   const [salsasBonelessSeleccionadas, setSalsasBonelessSeleccionadas] = useState<string[]>([])
@@ -226,15 +227,27 @@ export default function MeseroPage() {
     const max = maxSalsasParaProducto(producto.nombre)
     const tieneExtras = (producto.grupos_opciones ?? []).length > 0
     const cat = producto.categoria as string
-    if ((cat === 'alitas' || cat === 'boneless' || cat === 'paquetes') && max > 0) {
+    // Paquetes 2/3/4 tienen opción de alitas o boneless → preguntar primero
+    const esPaqueteConEleccion = cat === 'paquetes' && ['Paquete 2', 'Paquete 3', 'Paquete 4'].includes(producto.nombre)
+    if (esPaqueteConEleccion) {
+      setModalTipoBase({ producto })
+    } else if ((cat === 'alitas' || cat === 'boneless' || cat === 'paquetes') && max > 0) {
       setSalsasSeleccionadas([])
-      setModalSalsas({ producto, maxSalsas: max })
+      setModalSalsas({ producto, maxSalsas: max, tipo: 'alitas' })
     } else if (tieneExtras) {
       setExtrasSeleccionados([])
       setModalExtras({ producto, salsas: [] })
     } else {
       agregarAlCarrito(producto, [], [])
     }
+  }
+
+  function elegirTipoBase(tipo: 'alitas' | 'boneless') {
+    if (!modalTipoBase) return
+    const max = maxSalsasParaProducto(modalTipoBase.producto.nombre)
+    setSalsasSeleccionadas([])
+    setModalSalsas({ producto: modalTipoBase.producto, maxSalsas: max, tipo })
+    setModalTipoBase(null)
   }
 
   function agregarAlCarrito(producto: Producto, modificaciones: string[], extras: ItemExtra[]) {
@@ -264,15 +277,23 @@ export default function MeseroPage() {
 
   function confirmarSalsas() {
     if (!modalSalsas) return
-    const tieneExtras = (modalSalsas.producto.grupos_opciones ?? []).length > 0
+    const { producto, tipo } = modalSalsas
+    const tieneExtras = (producto.grupos_opciones ?? []).length > 0
+    // Si eligió boneless desde el tipo-base → agregar directo con nota, sin mostrar extras de upgrade
+    if (tipo === 'boneless') {
+      const mods = ['Boneless', ...salsasSeleccionadas]
+      agregarAlCarrito(producto, mods, [])
+      setModalSalsas(null)
+      setSalsasSeleccionadas([])
+      return
+    }
     if (tieneExtras) {
-      // Pasar a modal de extras con salsas ya seleccionadas
-      setModalExtras({ producto: modalSalsas.producto, salsas: salsasSeleccionadas })
+      setModalExtras({ producto, salsas: salsasSeleccionadas, tipo })
       setExtrasSeleccionados([])
       setModalSalsas(null)
       setSalsasSeleccionadas([])
     } else {
-      agregarAlCarrito(modalSalsas.producto, salsasSeleccionadas, [])
+      agregarAlCarrito(producto, salsasSeleccionadas, [])
       setModalSalsas(null)
       setSalsasSeleccionadas([])
     }
@@ -962,6 +983,40 @@ export default function MeseroPage() {
           </div>
         </div>
       )}
+      {/* ── Modal elección Alitas o Boneless (Paquetes 2/3/4) ── */}
+      {modalTipoBase && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-sm p-5 space-y-4">
+            <div>
+              <h3 className="font-bold text-white text-lg">🍗 ¿Alitas o Boneless?</h3>
+              <p className="text-sm text-gray-400">{modalTipoBase.producto.nombre} — elige cómo lo quieres</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => elegirTipoBase('alitas')}
+                className="flex flex-col items-center gap-2 py-5 rounded-xl bg-gray-800 border-2 border-gray-700 hover:border-orange-500 hover:bg-orange-500/10 transition active:scale-95"
+              >
+                <span className="text-3xl">🍗</span>
+                <span className="text-white font-bold">Alitas</span>
+              </button>
+              <button
+                onClick={() => elegirTipoBase('boneless')}
+                className="flex flex-col items-center gap-2 py-5 rounded-xl bg-gray-800 border-2 border-gray-700 hover:border-orange-500 hover:bg-orange-500/10 transition active:scale-95"
+              >
+                <span className="text-3xl">🔥</span>
+                <span className="text-white font-bold">Boneless</span>
+              </button>
+            </div>
+            <button
+              onClick={() => setModalTipoBase(null)}
+              className="w-full py-3 rounded-xl bg-gray-800 text-gray-400 font-medium hover:bg-gray-700 transition"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Modal selección de salsas */}
       {modalSalsas && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-4">
