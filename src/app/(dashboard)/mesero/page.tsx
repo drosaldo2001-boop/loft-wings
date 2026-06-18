@@ -336,7 +336,7 @@ export default function MeseroPage() {
     const nuevoSubtotal = (cuentaActiva.subtotal ?? 0) + subtotalNuevo
     await supabase.from('cuentas').update({
       subtotal: nuevoSubtotal,
-      impuesto: nuevoSubtotal * 0.16,
+      impuesto: 0,
       total: nuevoSubtotal * 1.16,
     }).eq('id', cuentaActiva.id)
 
@@ -774,13 +774,9 @@ export default function MeseroPage() {
                 <span className="text-gray-400">Subtotal</span>
                 <span className="text-white">${totalCarrito.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">IVA (16%)</span>
-                <span className="text-white">${(totalCarrito * 0.16).toFixed(2)}</span>
-              </div>
               <div className="flex justify-between text-lg font-bold">
                 <span className="text-white">Total</span>
-                <span className="text-orange-400">${(totalCarrito * 1.16).toFixed(2)}</span>
+                <span className="text-orange-400">${totalCarrito.toFixed(2)}</span>
               </div>
               <button
                 onClick={enviarPedido}

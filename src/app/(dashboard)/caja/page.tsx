@@ -252,7 +252,6 @@ export default function CajaPage() {
                   <div className="border-t border-gray-300 pt-2 mt-2 space-y-1">
                     <div className="flex justify-between"><span>Subtotal</span><span>${subtotalActivo.toFixed(2)}</span></div>
                     {descuento > 0 && <div className="flex justify-between text-green-600"><span>Descuento {descuento}%</span><span>-${descuentoAmt.toFixed(2)}</span></div>}
-                    <div className="flex justify-between"><span>IVA 16%</span><span>${impuestoAmt.toFixed(2)}</span></div>
                     {propina > 0 && <div className="flex justify-between"><span>Propina {propina}%</span><span>${propinaAmt.toFixed(2)}</span></div>}
                     <div className="flex justify-between font-bold text-base border-t border-gray-300 pt-1"><span>TOTAL</span><span>${totalFinal.toFixed(2)}</span></div>
                   </div>
@@ -317,7 +316,6 @@ export default function CajaPage() {
                   <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-2">
                     <div className="flex justify-between text-sm"><span className="text-gray-400">Subtotal</span><span className="text-white">${subtotalActivo.toFixed(2)}</span></div>
                     {descuento > 0 && <div className="flex justify-between text-sm"><span className="text-green-400">Descuento {descuento}%</span><span className="text-green-400">-${descuentoAmt.toFixed(2)}</span></div>}
-                    <div className="flex justify-between text-sm"><span className="text-gray-400">IVA (16%)</span><span className="text-white">${impuestoAmt.toFixed(2)}</span></div>
                     {propina > 0 && <div className="flex justify-between text-sm"><span className="text-yellow-400">Propina {propina}%</span><span className="text-yellow-400">+${propinaAmt.toFixed(2)}</span></div>}
                     <div className="flex justify-between text-xl font-bold pt-2 border-t border-gray-700">
                       <span className="text-white">Total</span>

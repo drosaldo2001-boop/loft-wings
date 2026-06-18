@@ -1,5 +1,5 @@
 export const APP_NAME = 'Loft Wings'
-export const IVA = 0.16
+export const IVA = 0 // IVA incluido en precio
 
 export const ZONAS_MESAS = ['Terraza', 'Interior', 'Bar', 'VIP', 'Delivery']
 
