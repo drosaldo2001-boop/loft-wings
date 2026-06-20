@@ -13,7 +13,7 @@ type Producto = ProductoBase & { grupos_opciones?: { nombre: string; opciones: {
 type Cuenta = any
 
 type ItemExtra = { nombre: string; precio: number }
-type PedidoItem = { producto: Producto | null; promoData?: Promocion; cantidad: number; notas: string; modificaciones: string[]; extras?: ItemExtra[] }
+type PedidoItem = { producto: Producto | null; promoData?: Promocion; cantidad: number; notas: string; modificaciones: string[]; extras?: ItemExtra[]; nombreManual?: string; precioManual?: number }
 type Vista = 'mesas' | 'abrirMesa' | 'selCuenta' | 'menu' | 'carrito' | 'ia' | 'resumen'
 
 interface Promocion {
@@ -57,6 +57,9 @@ export default function MeseroPage() {
   const [extrasSeleccionados, setExtrasSeleccionados] = useState<ItemExtra[]>([])
   const [modalSalsasBoneless, setModalSalsasBoneless] = useState<{ producto: Producto; salsasAlitas: string[]; extras: ItemExtra[]; maxSalsas: number } | null>(null)
   const [salsasBonelessSeleccionadas, setSalsasBonelessSeleccionadas] = useState<string[]>([])
+  const [modalManual, setModalManual] = useState(false)
+  const [manualNombre, setManualNombre] = useState('')
+  const [manualPrecio, setManualPrecio] = useState('')
   const [pedidosActivos, setPedidosActivos] = useState<PedidoEstado[]>([])
   const [cargandoResumen, setCargandoResumen] = useState(false)
   const [promociones, setPromociones] = useState<Promocion[]>([])
@@ -366,9 +369,13 @@ export default function MeseroPage() {
         cuenta_id: cuentaActiva.id,
         producto_id: item.producto?.id ?? null,
         cantidad: item.cantidad,
-        precio_unitario: (item.promoData?.precio ?? item.producto?.precio ?? 0) + (item.extras?.reduce((s, e) => s + e.precio, 0) ?? 0),
+        precio_unitario: (item.promoData?.precio ?? item.precioManual ?? item.producto?.precio ?? 0) + (item.extras?.reduce((s, e) => s + e.precio, 0) ?? 0),
         modificaciones: item.modificaciones,
-        notas: item.promoData ? `[Promo] ${item.promoData.nombre}` : (item.notas || null),
+        notas: item.nombreManual
+          ? `[Manual] ${item.nombreManual}`
+          : item.promoData
+            ? `[Promo] ${item.promoData.nombre}`
+            : (item.notas || null),
         estado: 'nuevo' as EstadoPedido,
       }))
     )
@@ -379,7 +386,7 @@ export default function MeseroPage() {
       return
     }
 
-    const subtotalNuevo = carrito.reduce((s, i) => s + ((i.promoData?.precio ?? i.producto?.precio ?? 0) + (i.extras?.reduce((a, e) => a + e.precio, 0) ?? 0)) * i.cantidad, 0)
+    const subtotalNuevo = carrito.reduce((s, i) => s + ((i.promoData?.precio ?? i.precioManual ?? i.producto?.precio ?? 0) + (i.extras?.reduce((a, e) => a + e.precio, 0) ?? 0)) * i.cantidad, 0)
     const nuevoSubtotal = (cuentaActiva.subtotal ?? 0) + subtotalNuevo
     await supabase.from('cuentas').update({
       subtotal: nuevoSubtotal,
@@ -433,7 +440,16 @@ export default function MeseroPage() {
     }
   }
 
-  const totalCarrito = carrito.reduce((s, i) => s + ((i.promoData?.precio ?? i.producto?.precio ?? 0) + (i.extras?.reduce((a, e) => a + e.precio, 0) ?? 0)) * i.cantidad, 0)
+  function agregarProductoManual() {
+    const precio = parseFloat(manualPrecio)
+    if (!manualNombre.trim() || isNaN(precio) || precio <= 0) return
+    setCarrito(prev => [...prev, { producto: null, cantidad: 1, notas: '', modificaciones: [], nombreManual: manualNombre.trim(), precioManual: precio }])
+    setManualNombre('')
+    setManualPrecio('')
+    setModalManual(false)
+  }
+
+  const totalCarrito = carrito.reduce((s, i) => s + ((i.promoData?.precio ?? i.precioManual ?? i.producto?.precio ?? 0) + (i.extras?.reduce((a, e) => a + e.precio, 0) ?? 0)) * i.cantidad, 0)
   const productosFiltrados = productos.filter(p => p.categoria === categoriaActiva)
 
   const DIAS: Record<string, string> = {
@@ -694,6 +710,12 @@ export default function MeseroPage() {
             >
               🤖 IA
             </button>
+            <button
+              onClick={() => { setManualNombre(''); setManualPrecio(''); setModalManual(true) }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium whitespace-nowrap bg-blue-600/20 text-blue-400 border border-blue-600/30 hover:bg-blue-600/30 transition"
+            >
+              ✏️ Manual
+            </button>
           </div>
 
           {/* Productos normales */}
@@ -790,13 +812,14 @@ export default function MeseroPage() {
               <p className="text-gray-500 text-center py-12">El carrito está vacío</p>
             ) : (
               carrito.map((item, idx) => {
-                const nombre = item.promoData?.nombre ?? item.producto?.nombre ?? ''
-                const precio = (item.promoData?.precio ?? item.producto?.precio ?? 0) + (item.extras?.reduce((a, e) => a + e.precio, 0) ?? 0)
+                const nombre = item.nombreManual ?? item.promoData?.nombre ?? item.producto?.nombre ?? ''
+                const precio = (item.promoData?.precio ?? item.precioManual ?? item.producto?.precio ?? 0) + (item.extras?.reduce((a, e) => a + e.precio, 0) ?? 0)
                 return (
                   <div key={idx} className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-center gap-3">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         {item.promoData && <span className="text-xs bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded-full">🎉 Promo</span>}
+                        {item.nombreManual && <span className="text-xs bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded-full">✏️ Manual</span>}
                         <p className="font-medium text-white text-sm">{nombre}</p>
                       </div>
                       {item.modificaciones.length > 0 && (
@@ -807,7 +830,11 @@ export default function MeseroPage() {
                     <div className="flex items-center gap-2">
                       <button onClick={() => quitarDelCarrito(idx)} className="w-8 h-8 bg-gray-800 rounded-lg text-white flex items-center justify-center hover:bg-red-500/20">−</button>
                       <span className="text-white font-bold w-6 text-center">{item.cantidad}</span>
-                      <button onClick={() => item.promoData ? agregarPromo(item.promoData) : (item.producto && agregarAlCarrito(item.producto, item.modificaciones, item.extras ?? []))} className="w-8 h-8 bg-orange-500/20 rounded-lg text-orange-400 flex items-center justify-center hover:bg-orange-500/30">+</button>
+                      <button onClick={() => {
+                        if (item.promoData) agregarPromo(item.promoData)
+                        else if (item.nombreManual) setCarrito(prev => { const n = [...prev]; n[idx] = { ...n[idx], cantidad: n[idx].cantidad + 1 }; return n })
+                        else if (item.producto) agregarAlCarrito(item.producto, item.modificaciones, item.extras ?? [])
+                      }} className="w-8 h-8 bg-orange-500/20 rounded-lg text-orange-400 flex items-center justify-center hover:bg-orange-500/30">+</button>
                     </div>
                   </div>
                 )
@@ -983,6 +1010,60 @@ export default function MeseroPage() {
           </div>
         </div>
       )}
+      {/* ── Modal producto manual ── */}
+      {modalManual && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-sm p-5 space-y-4">
+            <div>
+              <h3 className="font-bold text-white text-lg">✏️ Producto manual</h3>
+              <p className="text-sm text-gray-400">Agrega un producto que no está en el menú</p>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">Nombre del producto</label>
+                <input
+                  type="text"
+                  value={manualNombre}
+                  onChange={e => setManualNombre(e.target.value)}
+                  placeholder="Ej: Agua de Jamaica"
+                  autoFocus
+                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 text-sm"
+                  onKeyDown={e => e.key === 'Enter' && agregarProductoManual()}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">Precio ($)</label>
+                <input
+                  type="number"
+                  value={manualPrecio}
+                  onChange={e => setManualPrecio(e.target.value)}
+                  placeholder="0.00"
+                  min="0"
+                  step="0.50"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 text-sm"
+                  onKeyDown={e => e.key === 'Enter' && agregarProductoManual()}
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setModalManual(false)}
+                className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-400 font-medium hover:bg-gray-700 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={agregarProductoManual}
+                disabled={!manualNombre.trim() || !manualPrecio || parseFloat(manualPrecio) <= 0}
+                className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition active:scale-95 disabled:opacity-40"
+              >
+                ✓ Agregar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Modal elección Alitas o Boneless (Paquetes 2/3/4) ── */}
       {modalTipoBase && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-4">
