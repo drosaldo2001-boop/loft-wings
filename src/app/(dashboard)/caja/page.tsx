@@ -152,36 +152,35 @@ export default function CajaPage() {
 
   return (
     <>
-      {/* Estilos de impresión — rollo 58mm */}
+      {/* Estilos de impresión — rollo 58mm (área imprimible 48mm) */}
       <style>{`
         @media print {
           @page {
             size: 58mm auto;
-            margin: 0;
+            margin: 0mm 5mm;
           }
-          html, body {
-            margin: 0;
-            padding: 0;
-            width: 58mm;
-          }
+          html, body { margin: 0; padding: 0; }
           body * { visibility: hidden; }
           #ticket-print, #ticket-print * { visibility: visible; }
           #ticket-print {
             position: fixed;
             top: 0;
             left: 0;
-            width: 54mm;
-            padding: 2mm;
+            width: 48mm;
             font-family: 'Courier New', Courier, monospace;
-            font-size: 8pt;
-            line-height: 1.3;
+            font-size: 7.5pt;
+            line-height: 1.4;
             color: #000 !important;
             background: #fff !important;
           }
-          #ticket-print .ticket-logo { font-size: 11pt; font-weight: bold; }
-          #ticket-print .ticket-total { font-size: 10pt; font-weight: bold; }
-          #ticket-print .ticket-divider { border: none; border-top: 1px dashed #000; margin: 2mm 0; }
-          #ticket-print .ticket-item-precio { float: right; }
+          #ticket-print table { width: 100%; border-collapse: collapse; }
+          #ticket-print td { padding: 0; vertical-align: top; }
+          #ticket-print td.precio { text-align: right; white-space: nowrap; padding-left: 3px; width: 1%; }
+          #ticket-print .t-centro { text-align: center; }
+          #ticket-print .t-bold { font-weight: bold; }
+          #ticket-print .t-grande { font-size: 10pt; }
+          #ticket-print .t-chico { font-size: 6.5pt; }
+          #ticket-print .divider { display: block; border-top: 1px dashed #000; margin: 1.5mm 0; }
           #ticket-print .print-hide { display: none !important; }
         }
       `}</style>
@@ -257,57 +256,88 @@ export default function CajaPage() {
 
               {/* Vista ticket para cliente */}
               {vistaTicket ? (
-                <div id="ticket-print" className="bg-white text-black rounded-2xl p-4 font-mono text-xs">
+                <div id="ticket-print" className="bg-white text-black rounded-2xl p-3 font-mono text-xs max-w-[200px]">
+
                   {/* Encabezado */}
-                  <div className="text-center mb-2">
-                    <p className="ticket-logo font-bold text-base tracking-widest">LOFT WINGS</p>
-                    <p className="text-xs">{new Date().toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}</p>
-                    <p className="text-xs">{cuentaActiva.mesas?.nombre}{cuentaActiva.nombre_cuenta ? ` - ${cuentaActiva.nombre_cuenta}` : ''}</p>
-                    {cuentaActiva.usuarios && <p className="text-xs">Mesero: {cuentaActiva.usuarios.nombre}</p>}
+                  <div className="t-centro text-center mb-1">
+                    <p className="t-bold t-grande font-bold text-sm tracking-widest">LOFT WINGS</p>
+                    <span className="divider block border-t border-dashed border-black my-1" />
+                    <p>{new Date().toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}</p>
+                    <p>{cuentaActiva.mesas?.nombre}{cuentaActiva.nombre_cuenta ? ` / ${cuentaActiva.nombre_cuenta}` : ''}</p>
+                    {cuentaActiva.usuarios && <p>Mesero: {cuentaActiva.usuarios.nombre}</p>}
                   </div>
 
-                  <hr className="ticket-divider border-dashed border-black my-1" />
+                  <span className="divider block border-t border-dashed border-black my-1" />
 
-                  {/* Productos */}
-                  <div className="space-y-1 my-1">
-                    {pedidosActivos.map(p => {
-                      const total = (p.precio_unitario * p.cantidad).toFixed(2)
-                      const nombre = `${p.cantidad}x ${p.productos?.nombre ?? ''}`
-                      return (
-                        <div key={p.id}>
-                          <div className="flex justify-between">
-                            <span className="flex-1 pr-1 break-words">{nombre}</span>
-                            <span className="whitespace-nowrap">${total}</span>
-                          </div>
+                  {/* Productos — tabla para alinear precios */}
+                  <table className="w-full" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <tbody>
+                      {pedidosActivos.map(p => (
+                        <>
+                          <tr key={p.id}>
+                            <td style={{ wordBreak: 'break-word', verticalAlign: 'top', paddingRight: '3px' }}>
+                              {p.cantidad}x {p.productos?.nombre}
+                            </td>
+                            <td style={{ textAlign: 'right', whiteSpace: 'nowrap', verticalAlign: 'top', width: '1%' }}>
+                              ${(p.precio_unitario * p.cantidad).toFixed(2)}
+                            </td>
+                          </tr>
                           {p.modificaciones?.length > 0 && (
-                            <p className="text-xs pl-2">Salsa: {p.modificaciones.join(', ')}</p>
+                            <tr key={`${p.id}-mod`}>
+                              <td colSpan={2} className="t-chico" style={{ fontSize: '6.5pt', paddingLeft: '6px', paddingBottom: '2px' }}>
+                                &gt; {p.modificaciones.join(', ')}
+                              </td>
+                            </tr>
                           )}
-                          {p.notas && <p className="text-xs pl-2">Nota: {p.notas}</p>}
-                        </div>
-                      )
-                    })}
-                  </div>
+                          {p.notas && (
+                            <tr key={`${p.id}-nota`}>
+                              <td colSpan={2} className="t-chico" style={{ fontSize: '6.5pt', paddingLeft: '6px', paddingBottom: '2px' }}>
+                                Nota: {p.notas}
+                              </td>
+                            </tr>
+                          )}
+                        </>
+                      ))}
+                    </tbody>
+                  </table>
 
-                  <hr className="ticket-divider border-dashed border-black my-1" />
+                  <span className="divider block border-t border-dashed border-black my-1" />
 
                   {/* Totales */}
-                  <div className="space-y-0.5 text-xs">
-                    <div className="flex justify-between"><span>Subtotal</span><span>${subtotalActivo.toFixed(2)}</span></div>
-                    {descuento > 0 && <div className="flex justify-between"><span>Descuento {descuento}%</span><span>-${descuentoAmt.toFixed(2)}</span></div>}
-                    {propina > 0 && <div className="flex justify-between"><span>Propina {propina}%</span><span>+${propinaAmt.toFixed(2)}</span></div>}
-                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <tbody>
+                      <tr>
+                        <td>Subtotal</td>
+                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap', width: '1%' }}>${subtotalActivo.toFixed(2)}</td>
+                      </tr>
+                      {descuento > 0 && (
+                        <tr>
+                          <td>Descuento {descuento}%</td>
+                          <td style={{ textAlign: 'right', whiteSpace: 'nowrap', width: '1%' }}>-${descuentoAmt.toFixed(2)}</td>
+                        </tr>
+                      )}
+                      {propina > 0 && (
+                        <tr>
+                          <td>Propina {propina}%</td>
+                          <td style={{ textAlign: 'right', whiteSpace: 'nowrap', width: '1%' }}>+${propinaAmt.toFixed(2)}</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
 
-                  <hr className="ticket-divider border-dashed border-black my-1" />
+                  <span className="divider block border-t border-dashed border-black my-1" />
 
-                  <div className="flex justify-between ticket-total font-bold text-sm">
-                    <span>TOTAL</span>
-                    <span>${totalFinal.toFixed(2)}</span>
-                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <tbody>
+                      <tr>
+                        <td className="t-bold font-bold" style={{ fontSize: '10pt' }}>TOTAL</td>
+                        <td className="t-bold font-bold" style={{ textAlign: 'right', whiteSpace: 'nowrap', width: '1%', fontSize: '10pt' }}>${totalFinal.toFixed(2)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
 
-                  <hr className="ticket-divider border-dashed border-black my-1" />
-
-                  <p className="text-center text-xs mt-1">Gracias por su visita!</p>
-                  <p className="text-center text-xs">* Loft Wings *</p>
+                  <span className="divider block border-t border-dashed border-black my-1" />
+                  <p className="text-center t-centro text-xs mt-1">Gracias por su visita!</p>
 
                   {/* Botones — ocultos al imprimir */}
                   <div className="print-hide flex gap-2 mt-3">
