@@ -60,6 +60,7 @@ export default function MeseroPage() {
   const [modalManual, setModalManual] = useState(false)
   const [manualNombre, setManualNombre] = useState('')
   const [manualPrecio, setManualPrecio] = useState('')
+  const [manualNota, setManualNota] = useState('')
   const [pedidosActivos, setPedidosActivos] = useState<PedidoEstado[]>([])
   const [cargandoResumen, setCargandoResumen] = useState(false)
   const [promociones, setPromociones] = useState<Promocion[]>([])
@@ -443,9 +444,10 @@ export default function MeseroPage() {
   function agregarProductoManual() {
     const precio = parseFloat(manualPrecio)
     if (!manualNombre.trim() || isNaN(precio) || precio <= 0) return
-    setCarrito(prev => [...prev, { producto: null, cantidad: 1, notas: '', modificaciones: [], nombreManual: manualNombre.trim(), precioManual: precio }])
+    setCarrito(prev => [...prev, { producto: null, cantidad: 1, notas: manualNota.trim(), modificaciones: [], nombreManual: manualNombre.trim(), precioManual: precio }])
     setManualNombre('')
     setManualPrecio('')
+    setManualNota('')
     setModalManual(false)
   }
 
@@ -711,7 +713,7 @@ export default function MeseroPage() {
               🤖 IA
             </button>
             <button
-              onClick={() => { setManualNombre(''); setManualPrecio(''); setModalManual(true) }}
+              onClick={() => { setManualNombre(''); setManualPrecio(''); setManualNota(''); setModalManual(true) }}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium whitespace-nowrap bg-blue-600/20 text-blue-400 border border-blue-600/30 hover:bg-blue-600/30 transition"
             >
               ✏️ Manual
@@ -1040,6 +1042,17 @@ export default function MeseroPage() {
                   placeholder="0.00"
                   min="0"
                   step="0.50"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 text-sm"
+                  onKeyDown={e => e.key === 'Enter' && agregarProductoManual()}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">Comentario <span className="text-gray-600">(opcional)</span></label>
+                <input
+                  type="text"
+                  value={manualNota}
+                  onChange={e => setManualNota(e.target.value)}
+                  placeholder="Ej: sin cebolla, bien cocido..."
                   className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 text-sm"
                   onKeyDown={e => e.key === 'Enter' && agregarProductoManual()}
                 />
