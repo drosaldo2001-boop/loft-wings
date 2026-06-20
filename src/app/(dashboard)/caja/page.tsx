@@ -152,12 +152,37 @@ export default function CajaPage() {
 
   return (
     <>
-      {/* Estilos de impresión */}
+      {/* Estilos de impresión — rollo 58mm */}
       <style>{`
         @media print {
+          @page {
+            size: 58mm auto;
+            margin: 0;
+          }
+          html, body {
+            margin: 0;
+            padding: 0;
+            width: 58mm;
+          }
           body * { visibility: hidden; }
           #ticket-print, #ticket-print * { visibility: visible; }
-          #ticket-print { position: fixed; top: 0; left: 0; width: 80mm; font-family: monospace; }
+          #ticket-print {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 54mm;
+            padding: 2mm;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 8pt;
+            line-height: 1.3;
+            color: #000 !important;
+            background: #fff !important;
+          }
+          #ticket-print .ticket-logo { font-size: 11pt; font-weight: bold; }
+          #ticket-print .ticket-total { font-size: 10pt; font-weight: bold; }
+          #ticket-print .ticket-divider { border: none; border-top: 1px dashed #000; margin: 2mm 0; }
+          #ticket-print .ticket-item-precio { float: right; }
+          #ticket-print .print-hide { display: none !important; }
         }
       `}</style>
 
@@ -232,32 +257,60 @@ export default function CajaPage() {
 
               {/* Vista ticket para cliente */}
               {vistaTicket ? (
-                <div id="ticket-print" className="bg-white text-black rounded-2xl p-5 font-mono text-sm space-y-2">
-                  <div className="text-center border-b border-gray-300 pb-3 mb-3">
-                    <p className="font-bold text-lg">🍗 LOFT WINGS</p>
-                    <p className="text-xs text-gray-500">{new Date().toLocaleString('es-MX')}</p>
-                    <p className="text-xs">{cuentaActiva.mesas?.nombre} {cuentaActiva.nombre_cuenta ? `· ${cuentaActiva.nombre_cuenta}` : ''}</p>
+                <div id="ticket-print" className="bg-white text-black rounded-2xl p-4 font-mono text-xs">
+                  {/* Encabezado */}
+                  <div className="text-center mb-2">
+                    <p className="ticket-logo font-bold text-base tracking-widest">LOFT WINGS</p>
+                    <p className="text-xs">{new Date().toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}</p>
+                    <p className="text-xs">{cuentaActiva.mesas?.nombre}{cuentaActiva.nombre_cuenta ? ` - ${cuentaActiva.nombre_cuenta}` : ''}</p>
                     {cuentaActiva.usuarios && <p className="text-xs">Mesero: {cuentaActiva.usuarios.nombre}</p>}
                   </div>
-                  {pedidosActivos.map(p => (
-                    <div key={p.id} className="flex justify-between">
-                      <div>
-                        <p>{p.cantidad}x {p.productos?.nombre}</p>
-                        {p.modificaciones?.length > 0 && <p className="text-xs text-gray-500 pl-3">🔥 {p.modificaciones.join(', ')}</p>}
-                        {p.notas && <p className="text-xs text-gray-500 pl-3">📝 {p.notas}</p>}
-                      </div>
-                      <p>${(p.precio_unitario * p.cantidad).toFixed(2)}</p>
-                    </div>
-                  ))}
-                  <div className="border-t border-gray-300 pt-2 mt-2 space-y-1">
-                    <div className="flex justify-between"><span>Subtotal</span><span>${subtotalActivo.toFixed(2)}</span></div>
-                    {descuento > 0 && <div className="flex justify-between text-green-600"><span>Descuento {descuento}%</span><span>-${descuentoAmt.toFixed(2)}</span></div>}
-                    {propina > 0 && <div className="flex justify-between"><span>Propina {propina}%</span><span>${propinaAmt.toFixed(2)}</span></div>}
-                    <div className="flex justify-between font-bold text-base border-t border-gray-300 pt-1"><span>TOTAL</span><span>${totalFinal.toFixed(2)}</span></div>
-                  </div>
-                  <p className="text-center text-xs text-gray-400 pt-2">¡Gracias por su visita!</p>
 
-                  <div className="flex gap-2 pt-2 print:hidden">
+                  <hr className="ticket-divider border-dashed border-black my-1" />
+
+                  {/* Productos */}
+                  <div className="space-y-1 my-1">
+                    {pedidosActivos.map(p => {
+                      const total = (p.precio_unitario * p.cantidad).toFixed(2)
+                      const nombre = `${p.cantidad}x ${p.productos?.nombre ?? ''}`
+                      return (
+                        <div key={p.id}>
+                          <div className="flex justify-between">
+                            <span className="flex-1 pr-1 break-words">{nombre}</span>
+                            <span className="whitespace-nowrap">${total}</span>
+                          </div>
+                          {p.modificaciones?.length > 0 && (
+                            <p className="text-xs pl-2">Salsa: {p.modificaciones.join(', ')}</p>
+                          )}
+                          {p.notas && <p className="text-xs pl-2">Nota: {p.notas}</p>}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  <hr className="ticket-divider border-dashed border-black my-1" />
+
+                  {/* Totales */}
+                  <div className="space-y-0.5 text-xs">
+                    <div className="flex justify-between"><span>Subtotal</span><span>${subtotalActivo.toFixed(2)}</span></div>
+                    {descuento > 0 && <div className="flex justify-between"><span>Descuento {descuento}%</span><span>-${descuentoAmt.toFixed(2)}</span></div>}
+                    {propina > 0 && <div className="flex justify-between"><span>Propina {propina}%</span><span>+${propinaAmt.toFixed(2)}</span></div>}
+                  </div>
+
+                  <hr className="ticket-divider border-dashed border-black my-1" />
+
+                  <div className="flex justify-between ticket-total font-bold text-sm">
+                    <span>TOTAL</span>
+                    <span>${totalFinal.toFixed(2)}</span>
+                  </div>
+
+                  <hr className="ticket-divider border-dashed border-black my-1" />
+
+                  <p className="text-center text-xs mt-1">Gracias por su visita!</p>
+                  <p className="text-center text-xs">* Loft Wings *</p>
+
+                  {/* Botones — ocultos al imprimir */}
+                  <div className="print-hide flex gap-2 mt-3">
                     <button onClick={imprimirTicket} className="flex-1 bg-blue-600 text-white py-2 rounded-xl text-sm font-bold">🖨️ Imprimir</button>
                     <button onClick={() => setVistaTicket(false)} className="flex-1 bg-green-600 text-white py-2 rounded-xl text-sm font-bold">✅ Cobrar</button>
                   </div>
