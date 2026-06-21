@@ -61,6 +61,8 @@ export default function MeseroPage() {
   const [manualNombre, setManualNombre] = useState('')
   const [manualPrecio, setManualPrecio] = useState('')
   const [manualNota, setManualNota] = useState('')
+  const [notaTemp, setNotaTemp] = useState('')
+  const [modalNotaDirecta, setModalNotaDirecta] = useState<{ producto: Producto } | null>(null)
   const [pedidosActivos, setPedidosActivos] = useState<PedidoEstado[]>([])
   const [cargandoResumen, setCargandoResumen] = useState(false)
   const [promociones, setPromociones] = useState<Promocion[]>([])
@@ -234,15 +236,16 @@ export default function MeseroPage() {
     // Paquetes 2/3/4 tienen opción de alitas o boneless → preguntar primero
     const esPaqueteConEleccion = cat === 'paquetes' && ['Paquete 2', 'Paquete 3', 'Paquete 4'].includes(producto.nombre)
     if (esPaqueteConEleccion) {
-      setModalTipoBase({ producto })
+      setNotaTemp(''); setModalTipoBase({ producto })
     } else if ((cat === 'alitas' || cat === 'boneless' || cat === 'paquetes') && max > 0) {
-      setSalsasSeleccionadas([])
+      setSalsasSeleccionadas([]); setNotaTemp('')
       setModalSalsas({ producto, maxSalsas: max, tipo: 'alitas' })
     } else if (tieneExtras) {
-      setExtrasSeleccionados([])
+      setExtrasSeleccionados([]); setNotaTemp('')
       setModalExtras({ producto, salsas: [] })
     } else {
-      agregarAlCarrito(producto, [], [])
+      // Producto simple → modal de nota opcional
+      setNotaTemp(''); setModalNotaDirecta({ producto })
     }
   }
 
@@ -254,9 +257,11 @@ export default function MeseroPage() {
     setModalTipoBase(null)
   }
 
-  function agregarAlCarrito(producto: Producto, modificaciones: string[], extras: ItemExtra[]) {
+  function agregarAlCarrito(producto: Producto, modificaciones: string[], extras: ItemExtra[], nota = '') {
     setCarrito(prev => {
-      const idx = prev.findIndex(i => i.producto?.id === producto.id && JSON.stringify(i.modificaciones) === JSON.stringify(modificaciones) && JSON.stringify(i.extras) === JSON.stringify(extras))
+      // Si tiene nota, siempre agrega nuevo item (no acumula)
+      if (nota) return [...prev, { producto, cantidad: 1, notas: nota, modificaciones, extras }]
+      const idx = prev.findIndex(i => i.producto?.id === producto.id && JSON.stringify(i.modificaciones) === JSON.stringify(modificaciones) && JSON.stringify(i.extras) === JSON.stringify(extras) && !i.notas)
       if (idx >= 0) {
         const nuevo = [...prev]
         nuevo[idx] = { ...nuevo[idx], cantidad: nuevo[idx].cantidad + 1 }
@@ -297,9 +302,10 @@ export default function MeseroPage() {
       setModalSalsas(null)
       setSalsasSeleccionadas([])
     } else {
-      agregarAlCarrito(producto, salsasSeleccionadas, [])
+      agregarAlCarrito(producto, salsasSeleccionadas, [], notaTemp)
       setModalSalsas(null)
       setSalsasSeleccionadas([])
+      setNotaTemp('')
     }
   }
 
@@ -307,30 +313,30 @@ export default function MeseroPage() {
     if (!modalExtras) return
     const tieneBoneless = extrasSeleccionados.some(e => e.nombre.toLowerCase().includes('boneless'))
     if (tieneBoneless && (modalExtras.producto.categoria as string) === 'paquetes') {
-      // Abrir segundo modal de salsas para el boneless
       const max = maxSalsasParaProducto(modalExtras.producto.nombre)
       setModalSalsasBoneless({ producto: modalExtras.producto, salsasAlitas: modalExtras.salsas, extras: extrasSeleccionados, maxSalsas: max })
       setSalsasBonelessSeleccionadas([])
       setModalExtras(null)
       setExtrasSeleccionados([])
     } else {
-      agregarAlCarrito(modalExtras.producto, modalExtras.salsas, extrasSeleccionados)
+      agregarAlCarrito(modalExtras.producto, modalExtras.salsas, extrasSeleccionados, notaTemp)
       setModalExtras(null)
       setExtrasSeleccionados([])
+      setNotaTemp('')
     }
   }
 
   function confirmarSalsasBoneless() {
     if (!modalSalsasBoneless) return
     const { producto, salsasAlitas, extras } = modalSalsasBoneless
-    // Combinar salsas: alitas primero, luego boneless etiquetadas
     const mods = [
       ...salsasAlitas.map(s => `Alitas: ${s}`),
       ...salsasBonelessSeleccionadas.map(s => `Boneless: ${s}`),
     ]
-    agregarAlCarrito(producto, mods, extras)
+    agregarAlCarrito(producto, mods, extras, notaTemp)
     setModalSalsasBoneless(null)
     setSalsasBonelessSeleccionadas([])
+    setNotaTemp('')
   }
 
   function toggleExtra(extra: ItemExtra) {
@@ -1146,9 +1152,17 @@ export default function MeseroPage() {
               })}
             </div>
 
-            <div className="flex gap-3 pt-1">
+            <input
+              type="text"
+              value={notaTemp}
+              onChange={e => setNotaTemp(e.target.value)}
+              placeholder="📝 Comentario (extra salsa, sin cebolla...)"
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-white placeholder-gray-500 text-sm focus:outline-none focus:border-orange-500"
+            />
+
+            <div className="flex gap-3">
               <button
-                onClick={() => { setModalSalsas(null); setSalsasSeleccionadas([]) }}
+                onClick={() => { setModalSalsas(null); setSalsasSeleccionadas([]); setNotaTemp('') }}
                 className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-400 font-medium hover:bg-gray-700 transition"
               >
                 Cancelar
@@ -1197,8 +1211,16 @@ export default function MeseroPage() {
               </p>
             )}
 
+            <input
+              type="text"
+              value={notaTemp}
+              onChange={e => setNotaTemp(e.target.value)}
+              placeholder="📝 Comentario (opcional)"
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-white placeholder-gray-500 text-sm focus:outline-none focus:border-orange-500"
+            />
+
             <div className="flex gap-3">
-              <button onClick={() => { setModalExtras(null); setExtrasSeleccionados([]) }}
+              <button onClick={() => { setModalExtras(null); setExtrasSeleccionados([]); setNotaTemp('') }}
                 className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-400 font-medium hover:bg-gray-700 transition">
                 Cancelar
               </button>
@@ -1252,9 +1274,17 @@ export default function MeseroPage() {
               })}
             </div>
 
+            <input
+              type="text"
+              value={notaTemp}
+              onChange={e => setNotaTemp(e.target.value)}
+              placeholder="📝 Comentario (opcional)"
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-white placeholder-gray-500 text-sm focus:outline-none focus:border-orange-500"
+            />
+
             <div className="flex gap-3 pt-1">
               <button
-                onClick={() => { setModalSalsasBoneless(null); setSalsasBonelessSeleccionadas([]) }}
+                onClick={() => { setModalSalsasBoneless(null); setSalsasBonelessSeleccionadas([]); setNotaTemp('') }}
                 className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-400 font-medium hover:bg-gray-700 transition"
               >
                 Cancelar
@@ -1264,6 +1294,49 @@ export default function MeseroPage() {
                 className="flex-1 py-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold transition active:scale-95"
               >
                 {salsasBonelessSeleccionadas.length === 0 ? 'Sin salsa' : '✓ Agregar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal nota para productos simples ── */}
+      {modalNotaDirecta && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-sm p-5 space-y-4">
+            <div>
+              <h3 className="font-bold text-white text-base">{modalNotaDirecta.producto.nombre}</h3>
+              <p className="text-sm text-orange-400 font-bold">${modalNotaDirecta.producto.precio}</p>
+            </div>
+            <input
+              type="text"
+              value={notaTemp}
+              onChange={e => setNotaTemp(e.target.value)}
+              placeholder="📝 Comentario (sin cebolla, extra salsa...)"
+              autoFocus
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-white placeholder-gray-500 text-sm focus:outline-none focus:border-orange-500"
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  agregarAlCarrito(modalNotaDirecta.producto, [], [], notaTemp)
+                  setModalNotaDirecta(null); setNotaTemp('')
+                }
+              }}
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setModalNotaDirecta(null); setNotaTemp('') }}
+                className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-400 font-medium hover:bg-gray-700 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  agregarAlCarrito(modalNotaDirecta.producto, [], [], notaTemp)
+                  setModalNotaDirecta(null); setNotaTemp('')
+                }}
+                className="flex-1 py-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold transition active:scale-95"
+              >
+                ✓ Agregar
               </button>
             </div>
           </div>
