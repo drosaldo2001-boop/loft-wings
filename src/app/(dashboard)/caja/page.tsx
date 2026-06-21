@@ -71,6 +71,17 @@ export default function CajaPage() {
     return () => { supabase.removeChannel(channel) }
   }, [fetchCuentas])
 
+  async function cancelarProducto(pedidoId: string, nombre: string) {
+    if (!cuentaActiva) return
+    if (!window.confirm(`¿Cancelar "${nombre}"?`)) return
+    await supabase.from('pedidos').update({ estado: 'cancelado' }).eq('id', pedidoId)
+    // Recalcular subtotal de la cuenta sin ese pedido
+    const pedidosRestantes = cuentaActiva.pedidos.filter((p: any) => p.id !== pedidoId && p.estado !== 'cancelado')
+    const nuevoSubtotal = pedidosRestantes.reduce((s: number, p: any) => s + p.precio_unitario * p.cantidad, 0)
+    await supabase.from('cuentas').update({ subtotal: nuevoSubtotal, total: nuevoSubtotal }).eq('id', cuentaActiva.id)
+    fetchCuentas()
+  }
+
   async function cancelarCuenta() {
     if (!cuentaActiva) return
     if (!window.confirm(`¿Cancelar la cuenta "${cuentaActiva.nombre_cuenta ?? cuentaActiva.mesas?.nombre}"? Los pedidos se marcarán como cancelados.`)) return
@@ -350,16 +361,23 @@ export default function CajaPage() {
                   {/* Pedidos */}
                   <div className="bg-gray-900 border border-gray-800 rounded-2xl divide-y divide-gray-800">
                     {pedidosActivos.map(pedido => (
-                      <div key={pedido.id} className="flex items-center justify-between p-4">
-                        <div>
-                          <p className="text-white text-sm font-medium">{pedido.productos?.nombre}</p>
+                      <div key={pedido.id} className="flex items-center gap-3 p-4">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-sm font-medium">{pedido.productos?.nombre ?? pedido.notas}</p>
                           {pedido.modificaciones?.length > 0 && <p className="text-xs text-orange-300">🔥 {pedido.modificaciones.join(', ')}</p>}
-                          {pedido.notas && <p className="text-xs text-gray-500">{pedido.notas}</p>}
+                          {pedido.notas && pedido.productos?.nombre && <p className="text-xs text-gray-500">📝 {pedido.notas}</p>}
                         </div>
-                        <div className="text-right">
+                        <div className="text-right shrink-0">
                           <p className="text-white text-sm">×{pedido.cantidad}</p>
                           <p className="text-orange-400 font-bold">${(pedido.precio_unitario * pedido.cantidad).toFixed(2)}</p>
                         </div>
+                        <button
+                          onClick={() => cancelarProducto(pedido.id, pedido.productos?.nombre ?? pedido.notas ?? 'producto')}
+                          className="shrink-0 w-8 h-8 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/30 flex items-center justify-center transition text-lg font-bold"
+                          title="Cancelar producto"
+                        >
+                          ×
+                        </button>
                       </div>
                     ))}
                   </div>
