@@ -66,6 +66,7 @@ export default function MeseroPage() {
   const [modalNotaDirecta, setModalNotaDirecta] = useState<{ producto: Producto } | null>(null)
   const [pedidosActivos, setPedidosActivos] = useState<PedidoEstado[]>([])
   const [cargandoResumen, setCargandoResumen] = useState(false)
+  const [pedidosMesa, setPedidosMesa] = useState<any[]>([])
   const [fechaResumen, setFechaResumen] = useState(() => new Date().toISOString().slice(0, 10))
   const [promociones, setPromociones] = useState<Promocion[]>([])
 
@@ -138,6 +139,19 @@ export default function MeseroPage() {
         .order('created_at')
       setCuentasEnMesa(cuentas ?? [])
       setNombreCuenta('')
+      // Cargar pedidos de todas las cuentas de esta mesa
+      if (cuentas && cuentas.length > 0) {
+        const ids = cuentas.map((c: any) => c.id)
+        const { data: peds } = await supabase
+          .from('pedidos')
+          .select('id, cantidad, estado, notas, modificaciones, productos(nombre)')
+          .in('cuenta_id', ids)
+          .neq('estado', 'cancelado')
+          .order('created_at', { ascending: true })
+        setPedidosMesa(peds ?? [])
+      } else {
+        setPedidosMesa([])
+      }
       setVista('selCuenta')
     }
   }
@@ -653,6 +667,56 @@ export default function MeseroPage() {
               ))}
             </div>
           )}
+
+          {/* Pedidos de la mesa */}
+          {pedidosMesa.length > 0 && (() => {
+            const pendientes = pedidosMesa.filter(p => ['nuevo', 'en_preparacion', 'listo'].includes(p.estado))
+            const entregados = pedidosMesa.filter(p => p.estado === 'entregado')
+            return (
+              <div className="space-y-3 border-t border-gray-800 pt-3">
+                <p className="text-xs text-gray-500 uppercase tracking-wider">Pedidos en esta mesa</p>
+
+                {pendientes.length > 0 && (
+                  <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+                    <div className="px-3 py-2 bg-yellow-500/10 border-b border-yellow-500/20">
+                      <p className="text-xs font-bold text-yellow-400">⏳ Pendientes ({pendientes.length})</p>
+                    </div>
+                    <div className="divide-y divide-gray-800">
+                      {pendientes.map(p => (
+                        <div key={p.id} className="flex items-center gap-3 px-3 py-2.5">
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${p.estado === 'listo' ? 'bg-green-400' : p.estado === 'en_preparacion' ? 'bg-yellow-400' : 'bg-blue-400'}`} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white text-sm truncate">{p.cantidad > 1 ? `${p.cantidad}x ` : ''}{p.productos?.nombre ?? p.notas}</p>
+                            {p.modificaciones?.length > 0 && <p className="text-xs text-orange-300 truncate">🔥 {p.modificaciones.join(', ')}</p>}
+                            {p.notas && p.productos?.nombre && <p className="text-xs text-gray-500 truncate">📝 {p.notas}</p>}
+                          </div>
+                          <span className="text-xs shrink-0 font-medium text-gray-400">
+                            {p.estado === 'listo' ? '✅ Listo' : p.estado === 'en_preparacion' ? '👨‍🍳 Prep.' : '🆕 Nuevo'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {entregados.length > 0 && (
+                  <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+                    <div className="px-3 py-2 bg-gray-800">
+                      <p className="text-xs font-bold text-gray-400">✅ Entregados ({entregados.length})</p>
+                    </div>
+                    <div className="divide-y divide-gray-800">
+                      {entregados.map(p => (
+                        <div key={p.id} className="flex items-center gap-3 px-3 py-2.5 opacity-60">
+                          <span className="w-2 h-2 rounded-full bg-gray-500 shrink-0" />
+                          <p className="text-gray-400 text-sm flex-1 truncate line-through">{p.cantidad > 1 ? `${p.cantidad}x ` : ''}{p.productos?.nombre ?? p.notas}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
 
           {/* Cancelar mesa */}
           <div className="pt-2">
