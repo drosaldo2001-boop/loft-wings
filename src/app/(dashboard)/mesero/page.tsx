@@ -66,6 +66,7 @@ export default function MeseroPage() {
   const [modalNotaDirecta, setModalNotaDirecta] = useState<{ producto: Producto } | null>(null)
   const [pedidosActivos, setPedidosActivos] = useState<PedidoEstado[]>([])
   const [cargandoResumen, setCargandoResumen] = useState(false)
+  const [fechaResumen, setFechaResumen] = useState(() => new Date().toISOString().slice(0, 10))
   const [promociones, setPromociones] = useState<Promocion[]>([])
 
   const [mensajesIA, setMensajesIA] = useState<MensajeIA[]>([
@@ -87,16 +88,21 @@ export default function MeseroPage() {
     if (promoData) setPromociones(promoData as Promocion[])
   }, [])
 
-  const fetchResumen = useCallback(async () => {
+  const fetchResumen = useCallback(async (fecha?: string) => {
     setCargandoResumen(true)
+    const dia = fecha ?? new Date().toISOString().slice(0, 10)
+    const inicio = new Date(`${dia}T00:00:00`).toISOString()
+    const fin    = new Date(`${dia}T23:59:59`).toISOString()
     const { data, error } = await supabase
       .from('pedidos')
       .select(`
-        id, cantidad, estado, notas,
+        id, cantidad, estado, notas, created_at,
         productos!pedidos_producto_id_fkey (nombre),
         cuentas!pedidos_cuenta_id_fkey (nombre_cuenta, mesas!cuentas_mesa_id_fkey (nombre))
       `)
       .in('estado', ['nuevo', 'en_preparacion', 'listo', 'entregado'])
+      .gte('created_at', inicio)
+      .lte('created_at', fin)
       .order('created_at', { ascending: true })
     if (error) console.error('Resumen error:', error.message)
     if (data) setPedidosActivos(data as unknown as PedidoEstado[])
@@ -110,12 +116,12 @@ export default function MeseroPage() {
 
   useEffect(() => {
     if (vista !== 'resumen') return
-    fetchResumen()
+    fetchResumen(fechaResumen)
     const channel = supabase.channel('mesero_resumen')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos' }, fetchResumen)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos' }, () => fetchResumen(fechaResumen))
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [vista, fetchResumen])
+  }, [vista, fetchResumen, fechaResumen])
 
   async function seleccionarMesa(mesa: Mesa) {
     setMesaActiva(mesa)
@@ -899,9 +905,31 @@ export default function MeseroPage() {
         <div className="flex-1 overflow-auto p-4 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="font-bold text-white text-lg">📋 Estado de mis pedidos</h2>
-            <button onClick={fetchResumen} className="text-xs text-gray-500 hover:text-white px-3 py-1.5 bg-gray-800 rounded-lg">
+            <button onClick={() => fetchResumen(fechaResumen)} className="text-xs text-gray-500 hover:text-white px-3 py-1.5 bg-gray-800 rounded-lg">
               🔄 Actualizar
             </button>
+          </div>
+
+          {/* Filtro de fecha */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setFechaResumen(new Date().toISOString().slice(0, 10))}
+              className={`px-3 py-1.5 rounded-xl text-xs font-medium transition ${fechaResumen === new Date().toISOString().slice(0, 10) ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
+            >
+              Hoy
+            </button>
+            <button
+              onClick={() => { const a = new Date(); a.setDate(a.getDate() - 1); setFechaResumen(a.toISOString().slice(0, 10)) }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-medium transition ${fechaResumen === (() => { const a = new Date(); a.setDate(a.getDate() - 1); return a.toISOString().slice(0, 10) })() ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
+            >
+              Ayer
+            </button>
+            <input
+              type="date"
+              value={fechaResumen}
+              onChange={e => setFechaResumen(e.target.value)}
+              className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-3 py-1.5 text-white text-xs focus:outline-none focus:border-orange-500"
+            />
           </div>
 
           {cargandoResumen ? (
