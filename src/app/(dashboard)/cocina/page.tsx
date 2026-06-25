@@ -144,13 +144,19 @@ export default function CocinaPage() {
   const pedidosFiltrados = pedidos.filter(p =>
     filtro === 'todos' ? true : p.estado === filtro
   )
-  const pedidosCocina  = pedidosFiltrados.filter(p => p.productos?.categoria !== 'bebidas')
-  const pedidosBebidas = pedidosFiltrados.filter(p => p.productos?.categoria === 'bebidas')
+  const esBebida = (p: PedidoConDetalles) => {
+    const cat = p.productos?.categoria ?? ''
+    const nombre = (p.productos?.nombre ?? '').toLowerCase()
+    return cat === 'bebidas' || nombre.includes('caguama') || nombre.includes('cerveza') || nombre.includes('bebida')
+  }
+
+  const pedidosCocina  = pedidosFiltrados.filter(p => !esBebida(p))
+  const pedidosBebidas = pedidosFiltrados.filter(p => esBebida(p))
 
   const stats = {
     nuevos:  pedidos.filter(p => p.estado === 'nuevo').length,
     enPrep:  pedidos.filter(p => p.estado === 'en_preparacion').length,
-    bebidas: pedidos.filter(p => p.productos?.categoria === 'bebidas').length,
+    bebidas: pedidos.filter(p => esBebida(p)).length,
   }
 
   if (loading) return (
