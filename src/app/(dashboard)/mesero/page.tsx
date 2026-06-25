@@ -57,6 +57,7 @@ export default function MeseroPage() {
   const [extrasSeleccionados, setExtrasSeleccionados] = useState<ItemExtra[]>([])
   const [modalSalsasBoneless, setModalSalsasBoneless] = useState<{ producto: Producto; salsasAlitas: string[]; extras: ItemExtra[]; maxSalsas: number } | null>(null)
   const [salsasBonelessSeleccionadas, setSalsasBonelessSeleccionadas] = useState<string[]>([])
+  const [busqueda, setBusqueda] = useState('')
   const [modalManual, setModalManual] = useState(false)
   const [manualNombre, setManualNombre] = useState('')
   const [manualPrecio, setManualPrecio] = useState('')
@@ -458,7 +459,9 @@ export default function MeseroPage() {
   }
 
   const totalCarrito = carrito.reduce((s, i) => s + ((i.promoData?.precio ?? i.precioManual ?? i.producto?.precio ?? 0) + (i.extras?.reduce((a, e) => a + e.precio, 0) ?? 0)) * i.cantidad, 0)
-  const productosFiltrados = productos.filter(p => p.categoria === categoriaActiva)
+  const productosFiltrados = busqueda.trim()
+    ? productos.filter(p => p.nombre.toLowerCase().includes(busqueda.toLowerCase()) || p.descripcion?.toLowerCase().includes(busqueda.toLowerCase()))
+    : productos.filter(p => p.categoria === categoriaActiva)
 
   const DIAS: Record<string, string> = {
     lunes: 'Lunes', martes: 'Martes', miercoles: 'Miércoles', jueves: 'Jueves',
@@ -687,6 +690,22 @@ export default function MeseroPage() {
       {/* Vista: menú */}
       {vista === 'menu' && (
         <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Buscador */}
+          <div className="px-3 pt-3 pb-1 bg-gray-900">
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">🔍</span>
+              <input
+                type="text"
+                value={busqueda}
+                onChange={e => setBusqueda(e.target.value)}
+                placeholder="Buscar producto..."
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl pl-9 pr-9 py-2.5 text-white placeholder-gray-500 text-sm focus:outline-none focus:border-orange-500"
+              />
+              {busqueda && (
+                <button onClick={() => setBusqueda('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white">✕</button>
+              )}
+            </div>
+          </div>
           <div className="flex gap-2 p-3 overflow-x-auto border-b border-gray-800 bg-gray-900">
             <button
               onClick={() => setCategoriaActiva('__promos__')}
@@ -727,8 +746,11 @@ export default function MeseroPage() {
           </div>
 
           {/* Productos normales */}
-          {categoriaActiva !== '__promos__' && (
+          {(categoriaActiva !== '__promos__' || busqueda.trim()) && (
             <div className="flex-1 overflow-auto p-3 space-y-2">
+              {productosFiltrados.length === 0 && (
+                <p className="text-gray-500 text-center py-12 text-sm">No se encontró "{busqueda}"</p>
+              )}
               {productosFiltrados.map(prod => (
                 <div key={prod.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 flex items-center gap-3">
                   <div className="flex-1">
