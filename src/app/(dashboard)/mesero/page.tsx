@@ -495,6 +495,14 @@ export default function MeseroPage() {
   }
 
   const totalCarrito = carrito.reduce((s, i) => s + ((i.promoData?.precio ?? i.precioManual ?? i.producto?.precio ?? 0) + (i.extras?.reduce((a, e) => a + e.precio, 0) ?? 0)) * i.cantidad, 0)
+
+  // Admins y gerentes ven todo; meseros solo sus mesas ocupadas y las disponibles
+  const esAdmin = user?.rol === 'admin' || user?.rol === 'gerente'
+  const mesasVisibles = mesas.filter(mesa => {
+    if (esAdmin) return true
+    if (mesa.estado === 'ocupada' && (mesa as any).mesero_id && (mesa as any).mesero_id !== user?.id) return false
+    return true
+  })
   const productosFiltrados = busqueda.trim()
     ? productos.filter(p => p.nombre.toLowerCase().includes(busqueda.toLowerCase()) || p.descripcion?.toLowerCase().includes(busqueda.toLowerCase()))
     : productos.filter(p => p.categoria === categoriaActiva)
@@ -569,7 +577,7 @@ export default function MeseroPage() {
         <div className="flex-1 overflow-auto p-4 space-y-4">
           <p className="text-gray-400 text-sm">Selecciona una mesa para atender</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {mesas.map(mesa => (
+            {mesasVisibles.map(mesa => (
               <button
                 key={mesa.id}
                 onClick={() => seleccionarMesa(mesa)}
