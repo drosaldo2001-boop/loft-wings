@@ -51,7 +51,7 @@ export default function MeseroPage() {
   const [numPersonas, setNumPersonas] = useState(1)
   const [cargando, setCargando] = useState(false)
   const [modalTipoBase, setModalTipoBase] = useState<{ producto: Producto } | null>(null)
-  const [modalSalsas, setModalSalsas] = useState<{ producto: Producto; maxSalsas: number; tipo?: 'alitas' | 'boneless' } | null>(null)
+  const [modalSalsas, setModalSalsas] = useState<{ producto: Producto; maxSalsas: number; tipo?: 'alitas' | 'boneless'; esMixto?: boolean } | null>(null)
   const [salsasSeleccionadas, setSalsasSeleccionadas] = useState<string[]>([])
   const [modalExtras, setModalExtras] = useState<{ producto: Producto; salsas: string[]; tipo?: 'alitas' | 'boneless' } | null>(null)
   const [extrasSeleccionados, setExtrasSeleccionados] = useState<ItemExtra[]>([])
@@ -242,10 +242,11 @@ export default function MeseroPage() {
   }
 
   function maxSalsasParaProducto(nombre: string): number {
-    if (nombre.includes('10 pz') || nombre === 'Paquete 1') return 1
+    if (nombre.includes('10 pz') || nombre === 'Paquete 1' || nombre === 'Paquete Niños') return 1
     if (nombre.includes('20 pz') || nombre === 'Paquete 2') return 2
     if (nombre.includes('30 pz') || nombre === 'Paquete 3') return 3
-    if (nombre.includes('40 pz') || nombre.includes('50 pz') || nombre === 'Paquete 4') return 4
+    if (nombre.includes('40 pz') || nombre.includes('50 pz') || nombre === 'Paquete 4' || nombre === 'Paquete 5') return 4
+    if (nombre === 'Paquete 6') return 5
     if (nombre.includes('250 gr')) return 1
     if (nombre.includes('500 gr')) return 2
     return 0
@@ -255,9 +256,15 @@ export default function MeseroPage() {
     const max = maxSalsasParaProducto(producto.nombre)
     const tieneExtras = (producto.grupos_opciones ?? []).length > 0
     const cat = producto.categoria as string
-    // Todos los paquetes tienen opción de alitas o boneless → preguntar primero
-    const esPaqueteConEleccion = cat === 'paquetes' && ['Paquete 1', 'Paquete 2', 'Paquete 3', 'Paquete 4'].includes(producto.nombre)
-    if (esPaqueteConEleccion) {
+    // Paquetes 5 y 6 son mixtos (Alitas + Boneless): van directo a salsas de alitas → luego boneless
+    const esPaqueteMixto = cat === 'paquetes' && ['Paquete 5', 'Paquete 6'].includes(producto.nombre)
+    // Demás paquetes: elegir primero Alitas o Boneless
+    const esPaqueteConEleccion = cat === 'paquetes' && ['Paquete 1', 'Paquete 2', 'Paquete 3', 'Paquete 4', 'Paquete Niños'].includes(producto.nombre)
+    if (esPaqueteMixto) {
+      // Mixto: alitas Y boneless → pedir salsas de alitas primero, luego de boneless
+      setSalsasSeleccionadas([]); setNotaTemp('')
+      setModalSalsas({ producto, maxSalsas: max, tipo: 'alitas', esMixto: true })
+    } else if (esPaqueteConEleccion) {
       setNotaTemp(''); setModalTipoBase({ producto })
     } else if ((cat === 'alitas' || cat === 'boneless' || cat === 'paquetes') && max > 0) {
       setSalsasSeleccionadas([]); setNotaTemp('')
@@ -308,12 +315,20 @@ export default function MeseroPage() {
 
   function confirmarSalsas() {
     if (!modalSalsas) return
-    const { producto, tipo } = modalSalsas
+    const { producto, tipo, esMixto } = modalSalsas
     const tieneExtras = (producto.grupos_opciones ?? []).length > 0
-    // Si eligió boneless desde el tipo-base → agregar directo con nota, sin mostrar extras de upgrade
+    // Si eligió boneless desde el tipo-base → agregar directo
     if (tipo === 'boneless') {
       const mods = ['Boneless', ...salsasSeleccionadas]
       agregarAlCarrito(producto, mods, [])
+      setModalSalsas(null)
+      setSalsasSeleccionadas([])
+      return
+    }
+    // Paquete mixto (Alitas + Boneless): después de salsas de alitas, pedir salsas de boneless
+    if (esMixto) {
+      setModalSalsasBoneless({ producto, salsasAlitas: salsasSeleccionadas, extras: [], maxSalsas: modalSalsas.maxSalsas })
+      setSalsasBonelessSeleccionadas([])
       setModalSalsas(null)
       setSalsasSeleccionadas([])
       return
@@ -1214,12 +1229,14 @@ export default function MeseroPage() {
         </div>
       )}
 
-      {/* ── Modal elección Alitas o Boneless (Paquetes 2/3/4) ── */}
+      {/* ── Modal elección Alitas/Nuggets o Boneless ── */}
       {modalTipoBase && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-4">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-sm p-5 space-y-4">
             <div>
-              <h3 className="font-bold text-white text-lg">🍗 ¿Alitas o Boneless?</h3>
+              <h3 className="font-bold text-white text-lg">
+                {modalTipoBase.producto.nombre === 'Paquete Niños' ? '🍗 ¿Nuggets o Boneless?' : '🍗 ¿Alitas o Boneless?'}
+              </h3>
               <p className="text-sm text-gray-400">{modalTipoBase.producto.nombre} — elige cómo lo quieres</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -1227,8 +1244,8 @@ export default function MeseroPage() {
                 onClick={() => elegirTipoBase('alitas')}
                 className="flex flex-col items-center gap-2 py-5 rounded-xl bg-gray-800 border-2 border-gray-700 hover:border-orange-500 hover:bg-orange-500/10 transition active:scale-95"
               >
-                <span className="text-3xl">🍗</span>
-                <span className="text-white font-bold">Alitas</span>
+                <span className="text-3xl">{modalTipoBase.producto.nombre === 'Paquete Niños' ? '🍗' : '🍗'}</span>
+                <span className="text-white font-bold">{modalTipoBase.producto.nombre === 'Paquete Niños' ? 'Nuggets' : 'Alitas'}</span>
               </button>
               <button
                 onClick={() => elegirTipoBase('boneless')}
@@ -1364,13 +1381,16 @@ export default function MeseroPage() {
         </div>
       )}
 
-      {/* ── Modal salsas para boneless del upgrade ── */}
+      {/* ── Modal salsas para boneless del upgrade / paquete mixto ── */}
       {modalSalsasBoneless && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-4">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-sm p-5 space-y-4">
             <div>
               <h3 className="font-bold text-white text-lg">🔥 Salsas para el Boneless</h3>
               <p className="text-sm text-gray-400">{modalSalsasBoneless.producto.nombre}</p>
+              {modalSalsasBoneless.salsasAlitas.length > 0 && (
+                <p className="text-xs text-orange-300 mt-1">🍗 Alitas: {modalSalsasBoneless.salsasAlitas.join(', ')}</p>
+              )}
               <p className="text-xs text-orange-400 mt-1">
                 Puedes elegir hasta {modalSalsasBoneless.maxSalsas} salsa{modalSalsasBoneless.maxSalsas > 1 ? 's' : ''} · {salsasBonelessSeleccionadas.length}/{modalSalsasBoneless.maxSalsas} seleccionada{salsasBonelessSeleccionadas.length !== 1 ? 's' : ''}
               </p>
