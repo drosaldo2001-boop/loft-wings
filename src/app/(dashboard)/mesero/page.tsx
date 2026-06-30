@@ -243,8 +243,9 @@ export default function MeseroPage() {
 
   function maxSalsasParaProducto(nombre: string): number {
     if (nombre.includes('10 pz') || nombre === 'Paquete 1') return 1
-    if (nombre.includes('20 pz') || nombre === 'Paquete 2') return 3
-    if (nombre.includes('30 pz') || nombre.includes('40 pz') || nombre.includes('50 pz') || nombre === 'Paquete 3' || nombre === 'Paquete 4') return 4
+    if (nombre.includes('20 pz') || nombre === 'Paquete 2') return 2
+    if (nombre.includes('30 pz') || nombre === 'Paquete 3') return 3
+    if (nombre.includes('40 pz') || nombre.includes('50 pz') || nombre === 'Paquete 4') return 4
     if (nombre.includes('250 gr')) return 1
     if (nombre.includes('500 gr')) return 2
     return 0
@@ -254,8 +255,8 @@ export default function MeseroPage() {
     const max = maxSalsasParaProducto(producto.nombre)
     const tieneExtras = (producto.grupos_opciones ?? []).length > 0
     const cat = producto.categoria as string
-    // Paquetes 2/3/4 tienen opción de alitas o boneless → preguntar primero
-    const esPaqueteConEleccion = cat === 'paquetes' && ['Paquete 2', 'Paquete 3', 'Paquete 4'].includes(producto.nombre)
+    // Todos los paquetes tienen opción de alitas o boneless → preguntar primero
+    const esPaqueteConEleccion = cat === 'paquetes' && ['Paquete 1', 'Paquete 2', 'Paquete 3', 'Paquete 4'].includes(producto.nombre)
     if (esPaqueteConEleccion) {
       setNotaTemp(''); setModalTipoBase({ producto })
     } else if ((cat === 'alitas' || cat === 'boneless' || cat === 'paquetes') && max > 0) {
