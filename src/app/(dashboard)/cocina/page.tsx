@@ -1,9 +1,49 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { ESTADO_PEDIDO_CONFIG } from '@/lib/constants'
 import type { EstadoPedido } from '@/types/database'
+
+// ── Sonidos via Web Audio API (sin archivos externos) ──
+function sonarNuevoPedido() {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+    const tocar = (freq: number, inicio: number, dur: number) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain); gain.connect(ctx.destination)
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + inicio)
+      gain.gain.setValueAtTime(0, ctx.currentTime + inicio)
+      gain.gain.linearRampToValueAtTime(0.4, ctx.currentTime + inicio + 0.04)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + inicio + dur)
+      osc.start(ctx.currentTime + inicio)
+      osc.stop(ctx.currentTime + inicio + dur)
+    }
+    tocar(880, 0, 0.25)
+    tocar(1320, 0.18, 0.35)
+    tocar(1100, 0.38, 0.4)
+  } catch (e) { console.warn('Audio no disponible', e) }
+}
+
+function sonarAlertaUrgente() {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+    for (let i = 0; i < 4; i++) {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain); gain.connect(ctx.destination)
+      osc.type = 'square'
+      osc.frequency.setValueAtTime(i % 2 === 0 ? 600 : 500, ctx.currentTime + i * 0.28)
+      gain.gain.setValueAtTime(0, ctx.currentTime + i * 0.28)
+      gain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + i * 0.28 + 0.04)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.28 + 0.24)
+      osc.start(ctx.currentTime + i * 0.28)
+      osc.stop(ctx.currentTime + i * 0.28 + 0.24)
+    }
+  } catch (e) { console.warn('Audio no disponible', e) }
+}
 
 interface PedidoConDetalles {
   id: string
@@ -101,6 +141,13 @@ export default function CocinaPage() {
   const [pedidos, setPedidos] = useState<PedidoConDetalles[]>([])
   const [loading, setLoading] = useState(true)
   const [filtro, setFiltro] = useState<'todos' | 'nuevo' | 'en_preparacion'>('todos')
+  const [silencio, setSilencio] = useState(false)
+
+  // Refs para detectar pedidos nuevos sin re-renderizar
+  const idsAnteriores = useRef<Set<string>>(new Set())
+  const cargaInicial = useRef(true)
+  const silencioRef = useRef(false)
+  silencioRef.current = silencio
 
   const fetchPedidos = useCallback(async () => {
     const { data, error } = await supabase
@@ -113,7 +160,17 @@ export default function CocinaPage() {
       .in('estado', ['nuevo', 'en_preparacion'])
       .order('created_at', { ascending: true })
     if (error) console.error('Cocina fetch error:', error.message)
-    if (data) setPedidos(data as unknown as PedidoConDetalles[])
+    if (data) {
+      const nuevosData = data as unknown as PedidoConDetalles[]
+      // Detectar pedidos nuevos y sonar (no en la carga inicial)
+      if (!cargaInicial.current && !silencioRef.current) {
+        const hayNuevo = nuevosData.some(p => p.estado === 'nuevo' && !idsAnteriores.current.has(p.id))
+        if (hayNuevo) sonarNuevoPedido()
+      }
+      idsAnteriores.current = new Set(nuevosData.map(p => p.id))
+      cargaInicial.current = false
+      setPedidos(nuevosData)
+    }
     setLoading(false)
   }, [])
 
@@ -125,6 +182,20 @@ export default function CocinaPage() {
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [fetchPedidos])
+
+  // Alerta urgente: pedidos 'nuevo' con más de 5 minutos sin iniciar
+  useEffect(() => {
+    const intervalo = setInterval(() => {
+      if (silencioRef.current) return
+      const ahora = Date.now()
+      const LIMITE_MS = 5 * 60 * 1000 // 5 minutos
+      const hayUrgente = pedidos.some(p =>
+        p.estado === 'nuevo' && (ahora - new Date(p.created_at).getTime()) > LIMITE_MS
+      )
+      if (hayUrgente) sonarAlertaUrgente()
+    }, 60_000) // revisar cada minuto
+    return () => clearInterval(intervalo)
+  }, [pedidos])
 
   async function avanzarEstado(id: string, estadoActual: EstadoPedido) {
     const siguiente: Partial<Record<EstadoPedido, EstadoPedido>> = {
@@ -173,7 +244,18 @@ export default function CocinaPage() {
           <h1 className="text-2xl font-bold text-white">👨‍🍳 Cocina — KDS</h1>
           <p className="text-gray-400 text-sm">Kitchen Display System · Tiempo real</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setSilencio(s => !s)}
+            title={silencio ? 'Activar sonido' : 'Silenciar'}
+            className={`px-3 py-1.5 rounded-xl text-sm font-medium border transition ${
+              silencio
+                ? 'bg-red-500/20 border-red-500/40 text-red-400'
+                : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-500'
+            }`}
+          >
+            {silencio ? '🔇 Silenciado' : '🔔 Sonido'}
+          </button>
           <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
           <span className="text-green-400 text-sm font-medium">En vivo</span>
         </div>
