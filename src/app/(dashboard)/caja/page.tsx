@@ -71,6 +71,7 @@ export default function CajaPage() {
   const [segundosRestantes, setSegundosRestantes] = useState(() => INTERVALO_MS / 1000 - (Math.floor(Date.now() / 1000) % (INTERVALO_MS / 1000)))
   const [modalCancelacion, setModalCancelacion] = useState<{ pedidoId: string; nombre: string } | null>(null)
   const [tokenIngresado, setTokenIngresado] = useState('')
+  const [autorizadoPor, setAutorizadoPor] = useState('Diego')
   const [errorToken, setErrorToken] = useState(false)
   const inputTokenRef = useRef<HTMLInputElement>(null)
 
@@ -89,6 +90,7 @@ export default function CajaPage() {
   useEffect(() => {
     if (modalCancelacion) {
       setTokenIngresado('')
+      setAutorizadoPor('Diego')
       setErrorToken(false)
       setTimeout(() => inputTokenRef.current?.focus(), 100)
     }
@@ -110,13 +112,13 @@ export default function CajaPage() {
     const [{ data: cans }, { data: cerradas }] = await Promise.all([
       supabase
         .from('pedidos')
-        .select(`id, cantidad, precio_unitario, notas, modificaciones, created_at,
+        .select(`id, cantidad, precio_unitario, notas, created_at, cancelado_at, cancelado_por, autorizado_por,
           productos!pedidos_producto_id_fkey (nombre),
           cuentas!pedidos_cuenta_id_fkey (nombre_cuenta, mesas!cuentas_mesa_id_fkey (nombre))`)
         .eq('estado', 'cancelado')
         .gte('created_at', inicio)
         .lte('created_at', fin)
-        .order('created_at', { ascending: false }),
+        .order('cancelado_at', { ascending: false }),
       supabase
         .from('cuentas')
         .select(`id, nombre_cuenta, subtotal, descuento, total, metodo_pago, cerrada_at, created_at,
@@ -177,7 +179,12 @@ export default function CajaPage() {
     }
     const { pedidoId } = modalCancelacion
     setModalCancelacion(null)
-    await supabase.from('pedidos').update({ estado: 'cancelado' }).eq('id', pedidoId)
+    await supabase.from('pedidos').update({
+      estado: 'cancelado',
+      cancelado_por: user?.nombre ?? 'Desconocido',
+      cancelado_at: new Date().toISOString(),
+      autorizado_por: autorizadoPor,
+    }).eq('id', pedidoId)
     const pedidosRestantes = cuentaActiva.pedidos.filter((p: any) => p.id !== pedidoId && p.estado !== 'cancelado')
     const nuevoSubtotal = pedidosRestantes.reduce((s: number, p: any) => s + p.precio_unitario * p.cantidad, 0)
     await supabase.from('cuentas').update({ subtotal: nuevoSubtotal, total: nuevoSubtotal }).eq('id', cuentaActiva.id)
@@ -700,12 +707,22 @@ export default function CajaPage() {
                           {(c.cuentas as any)?.mesas?.nombre ?? '—'}
                           {(c.cuentas as any)?.nombre_cuenta ? ` / ${(c.cuentas as any).nombre_cuenta}` : ''}
                         </p>
-                        {c.notas && <p className="text-xs text-yellow-500/70 mt-0.5 italic">"{c.notas}"</p>}
+                        <div className="flex flex-wrap gap-x-3 mt-1.5">
+                          {c.cancelado_por && (
+                            <p className="text-xs text-blue-400">👤 Canceló: <span className="font-medium">{c.cancelado_por}</span></p>
+                          )}
+                          {c.autorizado_por && (
+                            <p className="text-xs text-yellow-500">🔐 Autorizó: <span className="font-medium">{c.autorizado_por}</span></p>
+                          )}
+                        </div>
+                        {c.notas && <p className="text-xs text-orange-400/70 mt-1 italic">"{c.notas}"</p>}
                       </div>
                       <div className="text-right flex-shrink-0">
                         <p className="text-red-400 font-bold">${((c.precio_unitario ?? 0) * (c.cantidad ?? 1)).toFixed(2)}</p>
-                        <p className="text-xs text-gray-600 mt-0.5">
-                          {new Date(c.created_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+                        <p className="text-xs text-gray-400 mt-0.5 font-medium">
+                          {c.cancelado_at
+                            ? new Date(c.cancelado_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                            : new Date(c.created_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
                         </p>
                       </div>
                     </div>
@@ -805,10 +822,30 @@ export default function CajaPage() {
               <p className="text-sm text-gray-400 mt-1">
                 Para cancelar <span className="text-white font-medium">"{modalCancelacion.nombre}"</span>
               </p>
-              <p className="text-xs text-gray-500 mt-1">Ingresa el código de autorización</p>
+            </div>
+
+            {/* ¿Quién autoriza? */}
+            <div className="space-y-1.5">
+              <p className="text-xs text-gray-400 font-medium">¿Quién autoriza?</p>
+              <div className="flex gap-2">
+                {['Diego', 'Eduardo', 'Natalia'].map(nombre => (
+                  <button
+                    key={nombre}
+                    onClick={() => setAutorizadoPor(nombre)}
+                    className={`flex-1 py-2 rounded-xl text-sm font-medium transition ${
+                      autorizadoPor === nombre
+                        ? 'bg-yellow-500/20 border border-yellow-500/50 text-yellow-300'
+                        : 'bg-gray-800 border border-gray-700 text-gray-400 hover:bg-gray-700'
+                    }`}
+                  >
+                    {nombre}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="space-y-2">
+              <p className="text-xs text-gray-500 text-center">Ingresa el código de autorización</p>
               <input
                 ref={inputTokenRef}
                 type="text"
