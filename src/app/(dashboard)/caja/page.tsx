@@ -13,9 +13,11 @@ const USUARIOS_HISTORIAL = ['diego', 'eduardo', 'natalia', 'diana'] // solo hist
 
 function slotActual() { return Math.floor(Date.now() / INTERVALO_MS) }
 
-function generarToken(slot: number): string {
-  // Hash determinístico simple del slot → 4 dígitos
-  let h = (slot * 2654435761) >>> 0
+function generarToken(slot: number, nombre: string): string {
+  // Hash único por slot + nombre → cada persona tiene su propio código
+  let seed = slot * 2654435761
+  for (let i = 0; i < nombre.length; i++) seed += nombre.charCodeAt(i) * (i + 1) * 98765
+  let h = seed >>> 0
   h = ((h ^ (h >>> 16)) * 1234567891) >>> 0
   h = (h ^ (h >>> 16)) >>> 0
   return String(h % 10000).padStart(4, '0')
@@ -67,7 +69,8 @@ export default function CajaPage() {
   const user = getSession()
   const esAutorizado  = USUARIOS_TOKEN.includes(user?.nombre?.toLowerCase() ?? '')
   const esHistorial   = USUARIOS_HISTORIAL.includes(user?.nombre?.toLowerCase() ?? '')
-  const [tokenActual, setTokenActual] = useState(() => generarToken(slotActual()))
+  const nombreUsuario = user?.nombre?.toLowerCase() ?? ''
+  const [tokenActual, setTokenActual] = useState(() => generarToken(slotActual(), nombreUsuario))
   const [segundosRestantes, setSegundosRestantes] = useState(() => INTERVALO_MS / 1000 - (Math.floor(Date.now() / 1000) % (INTERVALO_MS / 1000)))
   const [modalCancelacion, setModalCancelacion] = useState<{ pedidoId: string; nombre: string } | null>(null)
   const [tokenIngresado, setTokenIngresado] = useState('')
@@ -79,7 +82,7 @@ export default function CajaPage() {
   useEffect(() => {
     const tick = setInterval(() => {
       const slot = slotActual()
-      setTokenActual(generarToken(slot))
+      setTokenActual(generarToken(slot, nombreUsuario))
       const segs = Math.round(INTERVALO_MS / 1000 - (Math.floor(Date.now() / 1000) % (INTERVALO_MS / 1000)))
       setSegundosRestantes(segs)
     }, 1000)
@@ -170,8 +173,9 @@ export default function CajaPage() {
 
   async function confirmarCancelacion() {
     if (!cuentaActiva || !modalCancelacion) return
-    // Validar token
-    if (tokenIngresado.trim() !== tokenActual) {
+    // Validar contra el token ÚNICO de la persona seleccionada
+    const tokenEsperado = generarToken(slotActual(), autorizadoPor.toLowerCase())
+    if (tokenIngresado.trim() !== tokenEsperado) {
       setErrorToken(true)
       setTokenIngresado('')
       setTimeout(() => inputTokenRef.current?.focus(), 50)
