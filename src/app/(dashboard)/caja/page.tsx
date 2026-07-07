@@ -61,6 +61,8 @@ export default function CajaPage() {
   const [metodoPago, setMetodoPago] = useState<MetodoPago>('efectivo')
   const [descuento, setDescuento] = useState(0)
   const [propina, setPropina] = useState(0)
+  const [modoPropina, setModoPropina] = useState<'porcentaje' | 'cantidad'>('porcentaje')
+  const [propinaCantidad, setPropinaCantidad] = useState('')
   const [loading, setLoading] = useState(true)
   const [efectivoRecibido, setEfectivoRecibido] = useState('')
   const [vistaTicket, setVistaTicket] = useState(false)
@@ -195,6 +197,8 @@ export default function CajaPage() {
     setCuentaActiva(null)
     setDescuento(0)
     setPropina(0)
+    setModoPropina('porcentaje')
+    setPropinaCantidad('')
     setEfectivoRecibido('')
     setVistaTicket(false)
     fetchCuentas()
@@ -235,15 +239,17 @@ export default function CajaPage() {
     const descuentoAplicado = subtotal * (descuento / 100)
     const base = subtotal - descuentoAplicado
     const impuesto = base * IVA
-    const propinaAmt = base * (propina / 100)
-    const total = base + impuesto + propinaAmt
+    const propinaFinal = modoPropina === 'cantidad'
+      ? parseFloat(propinaCantidad || '0')
+      : base * (propina / 100)
+    const total = base + impuesto + propinaFinal
 
     await supabase.from('cuentas').update({
       estado: 'cerrada',
       subtotal,
       descuento: descuentoAplicado,
       impuesto,
-      propina: propinaAmt,
+      propina: propinaFinal,
       total,
       metodo_pago: metodoPago,
       cerrada_at: new Date().toISOString(),
@@ -266,6 +272,8 @@ export default function CajaPage() {
     setCuentaActiva(null)
     setDescuento(0)
     setPropina(0)
+    setModoPropina('porcentaje')
+    setPropinaCantidad('')
     setEfectivoRecibido('')
     setVistaTicket(false)
     fetchCuentas()
@@ -280,7 +288,9 @@ export default function CajaPage() {
   const descuentoAmt = subtotalActivo * (descuento / 100)
   const base = subtotalActivo - descuentoAmt
   const impuestoAmt = base * IVA
-  const propinaAmt = base * (propina / 100)
+  const propinaAmt = modoPropina === 'cantidad'
+    ? parseFloat(propinaCantidad || '0')
+    : base * (propina / 100)
   const totalFinal = base + impuestoAmt + propinaAmt
   const cambio = parseFloat(efectivoRecibido || '0') - totalFinal
 
@@ -359,7 +369,7 @@ export default function CajaPage() {
             ) : cuentas.map(cuenta => (
               <button
                 key={cuenta.id}
-                onClick={() => { setCuentaActiva(cuenta); setDescuento(0); setPropina(0); setEfectivoRecibido(''); setVistaTicket(false) }}
+                onClick={() => { setCuentaActiva(cuenta); setDescuento(0); setPropina(0); setModoPropina('porcentaje'); setPropinaCantidad(''); setEfectivoRecibido(''); setVistaTicket(false) }}
                 className={`w-full text-left p-4 rounded-xl border transition ${
                   cuentaActiva?.id === cuenta.id
                     ? 'bg-orange-500/15 border-orange-500/40'
@@ -477,9 +487,9 @@ export default function CajaPage() {
                           <td style={{ textAlign: 'right', whiteSpace: 'nowrap', width: '1%' }}>-${descuentoAmt.toFixed(2)}</td>
                         </tr>
                       )}
-                      {propina > 0 && (
+                      {propinaAmt > 0 && (
                         <tr>
-                          <td>Propina {propina}%</td>
+                          <td>Propina {modoPropina === 'porcentaje' ? `${propina}%` : 'fija'}</td>
                           <td style={{ textAlign: 'right', whiteSpace: 'nowrap', width: '1%' }}>+${propinaAmt.toFixed(2)}</td>
                         </tr>
                       )}
@@ -546,17 +556,46 @@ export default function CajaPage() {
                   </div>
 
                   {/* Propina */}
-                  <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-2">
-                    <p className="text-sm font-medium text-gray-400">Propina</p>
-                    <div className="flex gap-2">
-                      {PROPINAS.map(p => (
-                        <button key={p} onClick={() => setPropina(p)}
-                          className={`flex-1 py-2 rounded-xl text-sm font-medium transition ${propina === p ? 'bg-yellow-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
-                          {p === 0 ? 'Sin' : `${p}%`}
-                        </button>
-                      ))}
+                  <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium text-gray-400">Propina</p>
+                      {/* Toggle % / $ */}
+                      <div className="flex bg-gray-800 rounded-lg p-0.5 gap-0.5">
+                        <button
+                          onClick={() => { setModoPropina('porcentaje'); setPropinaCantidad('') }}
+                          className={`px-3 py-1 rounded-md text-xs font-bold transition ${modoPropina === 'porcentaje' ? 'bg-yellow-500 text-white' : 'text-gray-400 hover:text-white'}`}
+                        >%</button>
+                        <button
+                          onClick={() => { setModoPropina('cantidad'); setPropina(0) }}
+                          className={`px-3 py-1 rounded-md text-xs font-bold transition ${modoPropina === 'cantidad' ? 'bg-yellow-500 text-white' : 'text-gray-400 hover:text-white'}`}
+                        >$</button>
+                      </div>
                     </div>
-                    {propina > 0 && (
+
+                    {modoPropina === 'porcentaje' ? (
+                      <div className="flex gap-2">
+                        {PROPINAS.map(p => (
+                          <button key={p} onClick={() => setPropina(p)}
+                            className={`flex-1 py-2 rounded-xl text-sm font-medium transition ${propina === p ? 'bg-yellow-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+                            {p === 0 ? 'Sin' : `${p}%`}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={propinaCantidad}
+                          onChange={e => setPropinaCantidad(e.target.value)}
+                          placeholder="0.00"
+                          className="w-full bg-gray-800 border border-gray-700 rounded-xl pl-7 pr-4 py-3 text-white text-lg font-bold focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                        />
+                      </div>
+                    )}
+
+                    {propinaAmt > 0 && (
                       <p className="text-yellow-400 text-sm text-center font-medium">
                         Propina: ${propinaAmt.toFixed(2)} para {cuentaActiva.usuarios?.nombre ?? 'el mesero'}
                       </p>
@@ -567,7 +606,7 @@ export default function CajaPage() {
                   <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-2">
                     <div className="flex justify-between text-sm"><span className="text-gray-400">Subtotal</span><span className="text-white">${subtotalActivo.toFixed(2)}</span></div>
                     {descuento > 0 && <div className="flex justify-between text-sm"><span className="text-green-400">Descuento {descuento}%</span><span className="text-green-400">-${descuentoAmt.toFixed(2)}</span></div>}
-                    {propina > 0 && <div className="flex justify-between text-sm"><span className="text-yellow-400">Propina {propina}%</span><span className="text-yellow-400">+${propinaAmt.toFixed(2)}</span></div>}
+                    {propinaAmt > 0 && <div className="flex justify-between text-sm"><span className="text-yellow-400">Propina {modoPropina === 'porcentaje' ? `${propina}%` : 'fija'}</span><span className="text-yellow-400">+${propinaAmt.toFixed(2)}</span></div>}
                     <div className="flex justify-between text-xl font-bold pt-2 border-t border-gray-700">
                       <span className="text-white">Total</span>
                       <span className="text-orange-400">${totalFinal.toFixed(2)}</span>
