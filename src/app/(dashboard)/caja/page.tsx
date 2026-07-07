@@ -92,6 +92,50 @@ export default function CajaPage() {
     }
   }, [modalCancelacion])
 
+  // ── Historial (solo autorizados) ──
+  const [vistaHistorial, setVistaHistorial] = useState(false)
+  const [tabHistorial, setTabHistorial] = useState<'cancelaciones' | 'cuentas'>('cancelaciones')
+  const [fechaHistorial, setFechaHistorial] = useState(() => new Date().toISOString().slice(0, 10))
+  const [cancelaciones, setCancelaciones] = useState<any[]>([])
+  const [cuentasCerradas, setCuentasCerradas] = useState<any[]>([])
+  const [cargandoHistorial, setCargandoHistorial] = useState(false)
+
+  const fetchHistorial = useCallback(async (fecha: string) => {
+    setCargandoHistorial(true)
+    const inicio = new Date(`${fecha}T00:00:00`).toISOString()
+    const fin    = new Date(`${fecha}T23:59:59`).toISOString()
+
+    const [{ data: cans }, { data: cerradas }] = await Promise.all([
+      supabase
+        .from('pedidos')
+        .select(`id, cantidad, precio_unitario, notas, modificaciones, created_at,
+          productos!pedidos_producto_id_fkey (nombre),
+          cuentas!pedidos_cuenta_id_fkey (nombre_cuenta, mesas!cuentas_mesa_id_fkey (nombre))`)
+        .eq('estado', 'cancelado')
+        .gte('created_at', inicio)
+        .lte('created_at', fin)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('cuentas')
+        .select(`id, nombre_cuenta, subtotal, descuento, total, metodo_pago, cerrada_at, created_at,
+          mesas!cuentas_mesa_id_fkey (nombre),
+          usuarios!cuentas_mesero_id_fkey (nombre),
+          pedidos!pedidos_cuenta_id_fkey (id, cantidad, precio_unitario, estado, notas, productos!pedidos_producto_id_fkey (nombre))`)
+        .eq('estado', 'cerrada')
+        .gte('cerrada_at', inicio)
+        .lte('cerrada_at', fin)
+        .order('cerrada_at', { ascending: false }),
+    ])
+
+    setCancelaciones(cans ?? [])
+    setCuentasCerradas(cerradas ?? [])
+    setCargandoHistorial(false)
+  }, [])
+
+  useEffect(() => {
+    if (vistaHistorial && esAutorizado) fetchHistorial(fechaHistorial)
+  }, [vistaHistorial, fechaHistorial, esAutorizado, fetchHistorial])
+
   const fetchCuentas = useCallback(async () => {
     const { data } = await supabase
       .from('cuentas')
@@ -261,18 +305,26 @@ export default function CajaPage() {
 
             {/* Token de autorización — solo visible para Diego, Eduardo y Natalia */}
             {esAutorizado && (
-              <div className="mt-3 bg-gray-800 border border-yellow-500/30 rounded-xl p-3">
-                <p className="text-xs text-yellow-400 font-medium mb-1">🔐 Código de autorización</p>
-                <div className="flex items-center justify-between">
-                  <p className="text-3xl font-mono font-bold tracking-[0.3em] text-yellow-300">{tokenActual}</p>
-                  <div className="text-right">
-                    <p className="text-xs text-gray-500">Caduca en</p>
-                    <p className={`text-sm font-bold font-mono ${segundosRestantes <= 30 ? 'text-red-400' : 'text-gray-400'}`}>
-                      {String(Math.floor(segundosRestantes / 60)).padStart(2,'0')}:{String(segundosRestantes % 60).padStart(2,'0')}
-                    </p>
+              <>
+                <div className="mt-3 bg-gray-800 border border-yellow-500/30 rounded-xl p-3">
+                  <p className="text-xs text-yellow-400 font-medium mb-1">🔐 Código de autorización</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-3xl font-mono font-bold tracking-[0.3em] text-yellow-300">{tokenActual}</p>
+                    <div className="text-right">
+                      <p className="text-xs text-gray-500">Caduca en</p>
+                      <p className={`text-sm font-bold font-mono ${segundosRestantes <= 30 ? 'text-red-400' : 'text-gray-400'}`}>
+                        {String(Math.floor(segundosRestantes / 60)).padStart(2,'0')}:{String(segundosRestantes % 60).padStart(2,'0')}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
+                <button
+                  onClick={() => setVistaHistorial(true)}
+                  className="mt-2 w-full bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 text-sm font-medium py-2.5 rounded-xl transition flex items-center justify-center gap-2"
+                >
+                  📋 Ver Historial
+                </button>
+              </>
             )}
           </div>
           <div className="flex-1 overflow-auto p-3 space-y-2">
@@ -549,6 +601,197 @@ export default function CajaPage() {
           )}
         </div>
       </div>
+      {/* ── Modal Historial (solo Diego / Eduardo / Natalia) ── */}
+      {vistaHistorial && esAutorizado && (
+        <div className="fixed inset-0 bg-gray-950 z-50 flex flex-col">
+          {/* Header */}
+          <div className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between flex-shrink-0">
+            <div>
+              <h2 className="text-xl font-bold text-white">📋 Historial</h2>
+              <p className="text-xs text-gray-400">Cancelaciones y cuentas cerradas</p>
+            </div>
+            <button onClick={() => setVistaHistorial(false)} className="text-gray-400 hover:text-white text-3xl leading-none">×</button>
+          </div>
+
+          {/* Filtro de fecha */}
+          <div className="bg-gray-900 border-b border-gray-800 px-6 py-3 flex items-center gap-3 flex-shrink-0 flex-wrap">
+            <span className="text-xs text-gray-500 font-medium">Fecha:</span>
+            {[
+              { label: 'Hoy', val: new Date().toISOString().slice(0, 10) },
+              { label: 'Ayer', val: new Date(Date.now() - 86400000).toISOString().slice(0, 10) },
+            ].map(({ label, val }) => (
+              <button
+                key={val}
+                onClick={() => setFechaHistorial(val)}
+                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${
+                  fechaHistorial === val
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+            <input
+              type="date"
+              value={fechaHistorial}
+              onChange={e => setFechaHistorial(e.target.value)}
+              className="bg-gray-800 border border-gray-700 text-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          {/* Tabs */}
+          <div className="bg-gray-900 border-b border-gray-800 px-6 flex gap-1 flex-shrink-0">
+            {([
+              { key: 'cancelaciones', label: '🚫 Cancelaciones', count: cancelaciones.length },
+              { key: 'cuentas', label: '✅ Cuentas Cerradas', count: cuentasCerradas.length },
+            ] as const).map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setTabHistorial(tab.key)}
+                className={`px-5 py-3 text-sm font-medium border-b-2 transition ${
+                  tabHistorial === tab.key
+                    ? 'border-indigo-500 text-indigo-300'
+                    : 'border-transparent text-gray-500 hover:text-gray-300'
+                }`}
+              >
+                {tab.label}
+                {!cargandoHistorial && (
+                  <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${
+                    tabHistorial === tab.key ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-500'
+                  }`}>{tab.count}</span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Contenido */}
+          <div className="flex-1 overflow-auto p-6">
+            {cargandoHistorial ? (
+              <div className="flex items-center justify-center h-48">
+                <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : tabHistorial === 'cancelaciones' ? (
+              cancelaciones.length === 0 ? (
+                <div className="text-center py-16 text-gray-500">
+                  <p className="text-5xl mb-3">🚫</p>
+                  <p>No hay cancelaciones en esta fecha</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-w-3xl mx-auto">
+                  {/* Resumen */}
+                  <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-center justify-between mb-4">
+                    <span className="text-red-300 font-medium">{cancelaciones.length} productos cancelados</span>
+                    <span className="text-red-400 font-bold text-lg">
+                      -${cancelaciones.reduce((s: number, c: any) => s + (c.precio_unitario ?? 0) * (c.cantidad ?? 1), 0).toFixed(2)}
+                    </span>
+                  </div>
+                  {cancelaciones.map((c: any) => (
+                    <div key={c.id} className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-white truncate">
+                          {(c.productos as any)?.nombre ?? 'Producto'}
+                          {c.cantidad > 1 && <span className="text-gray-500 ml-1">×{c.cantidad}</span>}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {(c.cuentas as any)?.mesas?.nombre ?? '—'}
+                          {(c.cuentas as any)?.nombre_cuenta ? ` / ${(c.cuentas as any).nombre_cuenta}` : ''}
+                        </p>
+                        {c.notas && <p className="text-xs text-yellow-500/70 mt-0.5 italic">"{c.notas}"</p>}
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-red-400 font-bold">${((c.precio_unitario ?? 0) * (c.cantidad ?? 1)).toFixed(2)}</p>
+                        <p className="text-xs text-gray-600 mt-0.5">
+                          {new Date(c.created_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : (
+              /* Cuentas cerradas */
+              cuentasCerradas.length === 0 ? (
+                <div className="text-center py-16 text-gray-500">
+                  <p className="text-5xl mb-3">✅</p>
+                  <p>No hay cuentas cerradas en esta fecha</p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-w-3xl mx-auto">
+                  {/* Resumen */}
+                  <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4 flex items-center justify-between mb-4">
+                    <span className="text-green-300 font-medium">{cuentasCerradas.length} cuentas cerradas</span>
+                    <span className="text-green-400 font-bold text-lg">
+                      ${cuentasCerradas.reduce((s: number, c: any) => s + (c.total ?? 0), 0).toFixed(2)} total
+                    </span>
+                  </div>
+                  {cuentasCerradas.map((c: any) => {
+                    const pedidosCC = (c.pedidos ?? []) as any[]
+                    const entregados = pedidosCC.filter((p: any) => p.estado !== 'cancelado')
+                    const canceladosCC = pedidosCC.filter((p: any) => p.estado === 'cancelado')
+                    return (
+                      <div key={c.id} className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+                        {/* Encabezado cuenta */}
+                        <div className="flex items-start justify-between px-4 py-3 border-b border-gray-800">
+                          <div>
+                            <p className="font-bold text-white">
+                              {(c.mesas as any)?.nombre ?? 'Sin mesa'}
+                              {c.nombre_cuenta ? <span className="text-orange-400 ml-2 font-normal text-sm">/ {c.nombre_cuenta}</span> : null}
+                            </p>
+                            <div className="flex items-center gap-3 mt-0.5">
+                              {c.usuarios && <p className="text-xs text-gray-400">👤 {(c.usuarios as any).nombre}</p>}
+                              {c.metodo_pago && (
+                                <p className="text-xs text-blue-400">
+                                  {c.metodo_pago === 'efectivo' ? '💵' : c.metodo_pago === 'tarjeta' ? '💳' : '📱'} {c.metodo_pago}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-green-400 font-bold text-lg">${(c.total ?? 0).toFixed(2)}</p>
+                            <p className="text-xs text-gray-500">
+                              {c.cerrada_at
+                                ? new Date(c.cerrada_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+                                : '—'}
+                            </p>
+                          </div>
+                        </div>
+                        {/* Detalle pedidos */}
+                        <div className="px-4 py-3 space-y-1">
+                          {entregados.map((p: any) => (
+                            <div key={p.id} className="flex justify-between text-sm text-gray-300">
+                              <span>{p.productos?.nombre ?? '—'}{p.cantidad > 1 ? ` ×${p.cantidad}` : ''}</span>
+                              <span>${(p.precio_unitario * p.cantidad).toFixed(2)}</span>
+                            </div>
+                          ))}
+                          {canceladosCC.length > 0 && (
+                            <div className="mt-2 pt-2 border-t border-gray-800">
+                              {canceladosCC.map((p: any) => (
+                                <div key={p.id} className="flex justify-between text-xs text-red-400/60 line-through">
+                                  <span>{p.productos?.nombre ?? '—'}{p.cantidad > 1 ? ` ×${p.cantidad}` : ''}</span>
+                                  <span>${(p.precio_unitario * p.cantidad).toFixed(2)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {/* Subtotales */}
+                          {(c.descuento > 0 || c.total !== c.subtotal) && (
+                            <div className="mt-2 pt-2 border-t border-gray-800 space-y-0.5 text-xs text-gray-500">
+                              <div className="flex justify-between"><span>Subtotal</span><span>${(c.subtotal ?? 0).toFixed(2)}</span></div>
+                              {c.descuento > 0 && <div className="flex justify-between text-red-400/70"><span>Descuento</span><span>-${c.descuento.toFixed(2)}</span></div>}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── Modal de autorización para cancelar producto ── */}
       {modalCancelacion && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
