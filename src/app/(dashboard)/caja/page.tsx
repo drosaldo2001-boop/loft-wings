@@ -1,9 +1,24 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { IVA } from '@/lib/constants'
+import { getSession } from '@/lib/auth'
 import type { MetodoPago } from '@/types/database'
+
+// ── Token de autorización (cambia cada 5 minutos) ──
+const INTERVALO_MS = 5 * 60 * 1000 // 5 minutos
+const USUARIOS_TOKEN = ['diego', 'eduardo', 'natalia']
+
+function slotActual() { return Math.floor(Date.now() / INTERVALO_MS) }
+
+function generarToken(slot: number): string {
+  // Hash determinístico simple del slot → 4 dígitos
+  let h = (slot * 2654435761) >>> 0
+  h = ((h ^ (h >>> 16)) * 1234567891) >>> 0
+  h = (h ^ (h >>> 16)) >>> 0
+  return String(h % 10000).padStart(4, '0')
+}
 
 interface CuentaDetalle {
   id: string
@@ -47,6 +62,36 @@ export default function CajaPage() {
   const [efectivoRecibido, setEfectivoRecibido] = useState('')
   const [vistaTicket, setVistaTicket] = useState(false)
 
+  // ── Token de autorización ──
+  const user = getSession()
+  const esAutorizado = USUARIOS_TOKEN.includes(user?.nombre?.toLowerCase() ?? '')
+  const [tokenActual, setTokenActual] = useState(() => generarToken(slotActual()))
+  const [segundosRestantes, setSegundosRestantes] = useState(() => INTERVALO_MS / 1000 - (Math.floor(Date.now() / 1000) % (INTERVALO_MS / 1000)))
+  const [modalCancelacion, setModalCancelacion] = useState<{ pedidoId: string; nombre: string } | null>(null)
+  const [tokenIngresado, setTokenIngresado] = useState('')
+  const [errorToken, setErrorToken] = useState(false)
+  const inputTokenRef = useRef<HTMLInputElement>(null)
+
+  // Actualizar token y countdown cada segundo
+  useEffect(() => {
+    const tick = setInterval(() => {
+      const slot = slotActual()
+      setTokenActual(generarToken(slot))
+      const segs = Math.round(INTERVALO_MS / 1000 - (Math.floor(Date.now() / 1000) % (INTERVALO_MS / 1000)))
+      setSegundosRestantes(segs)
+    }, 1000)
+    return () => clearInterval(tick)
+  }, [])
+
+  // Focus automático al abrir modal de cancelación
+  useEffect(() => {
+    if (modalCancelacion) {
+      setTokenIngresado('')
+      setErrorToken(false)
+      setTimeout(() => inputTokenRef.current?.focus(), 100)
+    }
+  }, [modalCancelacion])
+
   const fetchCuentas = useCallback(async () => {
     const { data } = await supabase
       .from('cuentas')
@@ -71,11 +116,22 @@ export default function CajaPage() {
     return () => { supabase.removeChannel(channel) }
   }, [fetchCuentas])
 
-  async function cancelarProducto(pedidoId: string, nombre: string) {
-    if (!cuentaActiva) return
-    if (!window.confirm(`¿Cancelar "${nombre}"?`)) return
+  function cancelarProducto(pedidoId: string, nombre: string) {
+    setModalCancelacion({ pedidoId, nombre })
+  }
+
+  async function confirmarCancelacion() {
+    if (!cuentaActiva || !modalCancelacion) return
+    // Validar token
+    if (tokenIngresado.trim() !== tokenActual) {
+      setErrorToken(true)
+      setTokenIngresado('')
+      setTimeout(() => inputTokenRef.current?.focus(), 50)
+      return
+    }
+    const { pedidoId } = modalCancelacion
+    setModalCancelacion(null)
     await supabase.from('pedidos').update({ estado: 'cancelado' }).eq('id', pedidoId)
-    // Recalcular subtotal de la cuenta sin ese pedido
     const pedidosRestantes = cuentaActiva.pedidos.filter((p: any) => p.id !== pedidoId && p.estado !== 'cancelado')
     const nuevoSubtotal = pedidosRestantes.reduce((s: number, p: any) => s + p.precio_unitario * p.cantidad, 0)
     await supabase.from('cuentas').update({ subtotal: nuevoSubtotal, total: nuevoSubtotal }).eq('id', cuentaActiva.id)
@@ -202,6 +258,22 @@ export default function CajaPage() {
           <div className="p-4 border-b border-gray-800">
             <h1 className="text-xl font-bold text-white">💳 Caja</h1>
             <p className="text-gray-400 text-sm">{cuentas.length} cuentas abiertas</p>
+
+            {/* Token de autorización — solo visible para Diego, Eduardo y Natalia */}
+            {esAutorizado && (
+              <div className="mt-3 bg-gray-800 border border-yellow-500/30 rounded-xl p-3">
+                <p className="text-xs text-yellow-400 font-medium mb-1">🔐 Código de autorización</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-3xl font-mono font-bold tracking-[0.3em] text-yellow-300">{tokenActual}</p>
+                  <div className="text-right">
+                    <p className="text-xs text-gray-500">Caduca en</p>
+                    <p className={`text-sm font-bold font-mono ${segundosRestantes <= 30 ? 'text-red-400' : 'text-gray-400'}`}>
+                      {String(Math.floor(segundosRestantes / 60)).padStart(2,'0')}:{String(segundosRestantes % 60).padStart(2,'0')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
           <div className="flex-1 overflow-auto p-3 space-y-2">
             {cuentas.length === 0 ? (
@@ -477,6 +549,56 @@ export default function CajaPage() {
           )}
         </div>
       </div>
+      {/* ── Modal de autorización para cancelar producto ── */}
+      {modalCancelacion && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-900 border border-red-500/40 rounded-2xl w-full max-w-sm p-6 space-y-5 shadow-2xl">
+            <div className="text-center">
+              <p className="text-3xl mb-2">🔐</p>
+              <h3 className="font-bold text-white text-lg">Autorización requerida</h3>
+              <p className="text-sm text-gray-400 mt-1">
+                Para cancelar <span className="text-white font-medium">"{modalCancelacion.nombre}"</span>
+              </p>
+              <p className="text-xs text-gray-500 mt-1">Ingresa el código de autorización</p>
+            </div>
+
+            <div className="space-y-2">
+              <input
+                ref={inputTokenRef}
+                type="text"
+                inputMode="numeric"
+                maxLength={4}
+                value={tokenIngresado}
+                onChange={e => { setTokenIngresado(e.target.value.replace(/\D/g, '')); setErrorToken(false) }}
+                onKeyDown={e => e.key === 'Enter' && confirmarCancelacion()}
+                placeholder="_ _ _ _"
+                className={`w-full text-center text-3xl font-mono font-bold tracking-[0.4em] bg-gray-800 border rounded-xl px-4 py-4 text-white focus:outline-none transition ${
+                  errorToken ? 'border-red-500 animate-pulse' : 'border-gray-700 focus:border-yellow-500'
+                }`}
+              />
+              {errorToken && (
+                <p className="text-red-400 text-sm text-center font-medium">❌ Código incorrecto, intenta de nuevo</p>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setModalCancelacion(null); setTokenIngresado(''); setErrorToken(false) }}
+                className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-400 font-medium hover:bg-gray-700 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmarCancelacion}
+                disabled={tokenIngresado.length < 4}
+                className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold transition active:scale-95 disabled:opacity-40"
+              >
+                ✓ Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }
