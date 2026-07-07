@@ -72,7 +72,7 @@ export default function CajaPage() {
   const nombreUsuario = user?.nombre?.toLowerCase() ?? ''
   const [tokenActual, setTokenActual] = useState(() => generarToken(slotActual(), nombreUsuario))
   const [segundosRestantes, setSegundosRestantes] = useState(() => INTERVALO_MS / 1000 - (Math.floor(Date.now() / 1000) % (INTERVALO_MS / 1000)))
-  const [modalCancelacion, setModalCancelacion] = useState<{ pedidoId: string; nombre: string } | null>(null)
+  const [modalCancelacion, setModalCancelacion] = useState<{ pedidoId?: string; nombre: string; tipo: 'producto' | 'cuenta' } | null>(null)
   const [tokenIngresado, setTokenIngresado] = useState('')
   const [autorizadoPor, setAutorizadoPor] = useState('Diego')
   const [errorToken, setErrorToken] = useState(false)
@@ -168,36 +168,19 @@ export default function CajaPage() {
   }, [fetchCuentas])
 
   function cancelarProducto(pedidoId: string, nombre: string) {
-    setModalCancelacion({ pedidoId, nombre })
+    setModalCancelacion({ pedidoId, nombre, tipo: 'producto' })
   }
 
-  async function confirmarCancelacion() {
-    if (!cuentaActiva || !modalCancelacion) return
-    // Validar contra el token ÚNICO de la persona seleccionada
-    const tokenEsperado = generarToken(slotActual(), autorizadoPor.toLowerCase())
-    if (tokenIngresado.trim() !== tokenEsperado) {
-      setErrorToken(true)
-      setTokenIngresado('')
-      setTimeout(() => inputTokenRef.current?.focus(), 50)
-      return
-    }
-    const { pedidoId } = modalCancelacion
-    setModalCancelacion(null)
-    await supabase.from('pedidos').update({
-      estado: 'cancelado',
-      cancelado_por: user?.nombre ?? 'Desconocido',
-      cancelado_at: new Date().toISOString(),
-      autorizado_por: autorizadoPor,
-    }).eq('id', pedidoId)
-    const pedidosRestantes = cuentaActiva.pedidos.filter((p: any) => p.id !== pedidoId && p.estado !== 'cancelado')
-    const nuevoSubtotal = pedidosRestantes.reduce((s: number, p: any) => s + p.precio_unitario * p.cantidad, 0)
-    await supabase.from('cuentas').update({ subtotal: nuevoSubtotal, total: nuevoSubtotal }).eq('id', cuentaActiva.id)
-    fetchCuentas()
-  }
-
-  async function cancelarCuenta() {
+  function solicitarCancelarCuenta() {
     if (!cuentaActiva) return
-    if (!window.confirm(`¿Cancelar la cuenta "${cuentaActiva.nombre_cuenta ?? cuentaActiva.mesas?.nombre}"? Los pedidos se marcarán como cancelados.`)) return
+    setModalCancelacion({
+      nombre: cuentaActiva.nombre_cuenta ?? cuentaActiva.mesas?.nombre ?? 'esta cuenta',
+      tipo: 'cuenta',
+    })
+  }
+
+  async function ejecutarCancelarCuenta() {
+    if (!cuentaActiva) return
     await supabase.from('pedidos').update({ estado: 'cancelado' }).eq('cuenta_id', cuentaActiva.id)
     await supabase.from('cuentas').update({ estado: 'cancelada' }).eq('id', cuentaActiva.id)
     if (cuentaActiva.mesas) {
@@ -215,6 +198,35 @@ export default function CajaPage() {
     setEfectivoRecibido('')
     setVistaTicket(false)
     fetchCuentas()
+  }
+
+  async function confirmarCancelacion() {
+    if (!modalCancelacion) return
+    // Validar contra el token ÚNICO de la persona seleccionada
+    const tokenEsperado = generarToken(slotActual(), autorizadoPor.toLowerCase())
+    if (tokenIngresado.trim() !== tokenEsperado) {
+      setErrorToken(true)
+      setTokenIngresado('')
+      setTimeout(() => inputTokenRef.current?.focus(), 50)
+      return
+    }
+    setModalCancelacion(null)
+
+    if (modalCancelacion.tipo === 'cuenta') {
+      await ejecutarCancelarCuenta()
+    } else {
+      if (!cuentaActiva || !modalCancelacion.pedidoId) return
+      await supabase.from('pedidos').update({
+        estado: 'cancelado',
+        cancelado_por: user?.nombre ?? 'Desconocido',
+        cancelado_at: new Date().toISOString(),
+        autorizado_por: autorizadoPor,
+      }).eq('id', modalCancelacion.pedidoId)
+      const pedidosRestantes = cuentaActiva.pedidos.filter((p: any) => p.id !== modalCancelacion.pedidoId && p.estado !== 'cancelado')
+      const nuevoSubtotal = pedidosRestantes.reduce((s: number, p: any) => s + p.precio_unitario * p.cantidad, 0)
+      await supabase.from('cuentas').update({ subtotal: nuevoSubtotal, total: nuevoSubtotal }).eq('id', cuentaActiva.id)
+      fetchCuentas()
+    }
   }
 
   async function cerrarCuenta() {
@@ -604,7 +616,7 @@ export default function CajaPage() {
                     </button>
                   </div>
                   <button
-                    onClick={cancelarCuenta}
+                    onClick={solicitarCancelarCuenta}
                     className="w-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-medium py-3 rounded-xl transition active:scale-95 text-sm"
                   >
                     🚫 Cancelar Cuenta
@@ -821,10 +833,13 @@ export default function CajaPage() {
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-gray-900 border border-red-500/40 rounded-2xl w-full max-w-sm p-6 space-y-5 shadow-2xl">
             <div className="text-center">
-              <p className="text-3xl mb-2">🔐</p>
+              <p className="text-3xl mb-2">{modalCancelacion.tipo === 'cuenta' ? '⚠️' : '🔐'}</p>
               <h3 className="font-bold text-white text-lg">Autorización requerida</h3>
               <p className="text-sm text-gray-400 mt-1">
-                Para cancelar <span className="text-white font-medium">"{modalCancelacion.nombre}"</span>
+                {modalCancelacion.tipo === 'cuenta'
+                  ? <>Cancelar <span className="text-red-400 font-medium">toda la cuenta</span> de <span className="text-white font-medium">"{modalCancelacion.nombre}"</span></>
+                  : <>Cancelar producto <span className="text-white font-medium">"{modalCancelacion.nombre}"</span></>
+                }
               </p>
             </div>
 
