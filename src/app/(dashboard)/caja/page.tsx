@@ -8,7 +8,8 @@ import type { MetodoPago } from '@/types/database'
 
 // ── Token de autorización (cambia cada 5 minutos) ──
 const INTERVALO_MS = 5 * 60 * 1000 // 5 minutos
-const USUARIOS_TOKEN = ['diego', 'eduardo', 'natalia']
+const USUARIOS_TOKEN    = ['diego', 'eduardo', 'natalia']          // código + historial
+const USUARIOS_HISTORIAL = ['diego', 'eduardo', 'natalia', 'diana'] // solo historial
 
 function slotActual() { return Math.floor(Date.now() / INTERVALO_MS) }
 
@@ -64,7 +65,8 @@ export default function CajaPage() {
 
   // ── Token de autorización ──
   const user = getSession()
-  const esAutorizado = USUARIOS_TOKEN.includes(user?.nombre?.toLowerCase() ?? '')
+  const esAutorizado  = USUARIOS_TOKEN.includes(user?.nombre?.toLowerCase() ?? '')
+  const esHistorial   = USUARIOS_HISTORIAL.includes(user?.nombre?.toLowerCase() ?? '')
   const [tokenActual, setTokenActual] = useState(() => generarToken(slotActual()))
   const [segundosRestantes, setSegundosRestantes] = useState(() => INTERVALO_MS / 1000 - (Math.floor(Date.now() / 1000) % (INTERVALO_MS / 1000)))
   const [modalCancelacion, setModalCancelacion] = useState<{ pedidoId: string; nombre: string } | null>(null)
@@ -133,8 +135,8 @@ export default function CajaPage() {
   }, [])
 
   useEffect(() => {
-    if (vistaHistorial && esAutorizado) fetchHistorial(fechaHistorial)
-  }, [vistaHistorial, fechaHistorial, esAutorizado, fetchHistorial])
+    if (vistaHistorial && esHistorial) fetchHistorial(fechaHistorial)
+  }, [vistaHistorial, fechaHistorial, esHistorial, fetchHistorial])
 
   const fetchCuentas = useCallback(async () => {
     const { data } = await supabase
@@ -303,28 +305,29 @@ export default function CajaPage() {
             <h1 className="text-xl font-bold text-white">💳 Caja</h1>
             <p className="text-gray-400 text-sm">{cuentas.length} cuentas abiertas</p>
 
-            {/* Token de autorización — solo visible para Diego, Eduardo y Natalia */}
+            {/* Token de autorización — solo Diego, Eduardo y Natalia */}
             {esAutorizado && (
-              <>
-                <div className="mt-3 bg-gray-800 border border-yellow-500/30 rounded-xl p-3">
-                  <p className="text-xs text-yellow-400 font-medium mb-1">🔐 Código de autorización</p>
-                  <div className="flex items-center justify-between">
-                    <p className="text-3xl font-mono font-bold tracking-[0.3em] text-yellow-300">{tokenActual}</p>
-                    <div className="text-right">
-                      <p className="text-xs text-gray-500">Caduca en</p>
-                      <p className={`text-sm font-bold font-mono ${segundosRestantes <= 30 ? 'text-red-400' : 'text-gray-400'}`}>
-                        {String(Math.floor(segundosRestantes / 60)).padStart(2,'0')}:{String(segundosRestantes % 60).padStart(2,'0')}
-                      </p>
-                    </div>
+              <div className="mt-3 bg-gray-800 border border-yellow-500/30 rounded-xl p-3">
+                <p className="text-xs text-yellow-400 font-medium mb-1">🔐 Código de autorización</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-3xl font-mono font-bold tracking-[0.3em] text-yellow-300">{tokenActual}</p>
+                  <div className="text-right">
+                    <p className="text-xs text-gray-500">Caduca en</p>
+                    <p className={`text-sm font-bold font-mono ${segundosRestantes <= 30 ? 'text-red-400' : 'text-gray-400'}`}>
+                      {String(Math.floor(segundosRestantes / 60)).padStart(2,'0')}:{String(segundosRestantes % 60).padStart(2,'0')}
+                    </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => setVistaHistorial(true)}
-                  className="mt-2 w-full bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 text-sm font-medium py-2.5 rounded-xl transition flex items-center justify-center gap-2"
-                >
-                  📋 Ver Historial
-                </button>
-              </>
+              </div>
+            )}
+            {/* Botón historial — Diego, Eduardo, Natalia y Diana */}
+            {esHistorial && (
+              <button
+                onClick={() => setVistaHistorial(true)}
+                className="mt-2 w-full bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 text-sm font-medium py-2.5 rounded-xl transition flex items-center justify-center gap-2"
+              >
+                📋 Ver Historial
+              </button>
             )}
           </div>
           <div className="flex-1 overflow-auto p-3 space-y-2">
@@ -601,8 +604,8 @@ export default function CajaPage() {
           )}
         </div>
       </div>
-      {/* ── Modal Historial (solo Diego / Eduardo / Natalia) ── */}
-      {vistaHistorial && esAutorizado && (
+      {/* ── Modal Historial (Diego / Eduardo / Natalia / Diana) ── */}
+      {vistaHistorial && esHistorial && (
         <div className="fixed inset-0 bg-gray-950 z-50 flex flex-col">
           {/* Header */}
           <div className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between flex-shrink-0">
