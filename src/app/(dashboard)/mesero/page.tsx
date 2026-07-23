@@ -60,6 +60,7 @@ export default function MeseroPage() {
   const [notaKiosk, setNotaKiosk] = useState('')
   const [ingRemover, setIngRemover] = useState<string[]>([])
   const [extrasKiosk, setExtrasKiosk] = useState<ItemExtra[]>([])
+  const [rellenoKiosk, setRellenoKiosk] = useState<string>('')
   const [modalTipoBase, setModalTipoBase] = useState<{ producto: Producto } | null>(null)
   const [modalSalsas, setModalSalsas] = useState<{ producto: Producto; maxSalsas: number; tipo?: 'alitas' | 'boneless'; esMixto?: boolean } | null>(null)
   const [salsasSeleccionadas, setSalsasSeleccionadas] = useState<string[]>([])
@@ -422,7 +423,7 @@ export default function MeseroPage() {
   function abrirKiosk(prod: Producto) {
     setModalKiosk(prod); setTipoKiosk(null)
     setSalsasKiosk([]); setSalsasBonelessKiosk([])
-    setCantidadKiosk(1); setNotaKiosk(''); setIngRemover([]); setExtrasKiosk([])
+    setCantidadKiosk(1); setNotaKiosk(''); setIngRemover([]); setExtrasKiosk([]); setRellenoKiosk('')
   }
 
   function confirmarKiosk() {
@@ -439,6 +440,7 @@ export default function MeseroPage() {
       salsasKiosk.forEach(s => mods.push(s))
     }
     ingRemover.forEach(ing => mods.push(`Sin ${ing}`))
+    if (rellenoKiosk) mods.push(rellenoKiosk)
     setCarrito(prev => [...prev, { producto: prod, cantidad: cantidadKiosk, notas: notaKiosk, modificaciones: mods, extras: extrasKiosk }])
     setModalKiosk(null)
   }
@@ -1328,10 +1330,12 @@ export default function MeseroPage() {
         const precioTotal = ((prod.precio ?? 0) + precioExtras) * cantidadKiosk
 
         // Validación para habilitar el botón Agregar
+        const esFlauta = prod.nombre.toLowerCase().includes('flauta')
         const faltaTipo = esPaqueteConEleccion && !tipoKiosk
         const faltaSalsasAlitas = (mostrarSalsasAlitas || esMixto) && salsasKiosk.length === 0 && maxS > 0
         const faltaSalsasBoneless = (mostrarSalsasBoneless || esMixto) && salsasBonelessKiosk.length === 0 && maxS > 0
-        const puedeAgregar = !faltaTipo && !faltaSalsasAlitas && !faltaSalsasBoneless
+        const faltaRelleno = esFlauta && !rellenoKiosk
+        const puedeAgregar = !faltaTipo && !faltaSalsasAlitas && !faltaSalsasBoneless && !faltaRelleno
 
         return (
           <div className="fixed inset-0 bg-black/80 z-50 flex items-end">
@@ -1488,6 +1492,28 @@ export default function MeseroPage() {
                   </div>
                 )}
 
+                {/* ── Relleno flautas ── */}
+                {esFlauta && (
+                  <div>
+                    <p className="text-white font-bold mb-3">🌮 ¿De qué las quieres? <span className="text-red-400 text-sm">*</span></p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {['Pollo', 'Papa con chorizo', 'Carne', 'Mixtas'].map(op => (
+                        <button
+                          key={op}
+                          onClick={() => setRellenoKiosk(op)}
+                          className={`py-3 px-3 rounded-xl border-2 text-sm font-semibold transition active:scale-95 ${
+                            rellenoKiosk === op
+                              ? 'border-orange-500 bg-orange-500/20 text-white'
+                              : 'border-gray-700 bg-gray-800 text-gray-300'
+                          }`}
+                        >
+                          {op === 'Pollo' ? '🐔 Pollo' : op === 'Papa con chorizo' ? '🥔 Papa con chorizo' : op === 'Carne' ? '🥩 Carne' : '🌮 Mixtas'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* ── Papas a la francesa (hamburguesas) ── */}
                 {cat === 'hamburguesas' && (() => {
                   const papas = { nombre: 'Papas a la francesa', precio: 30 }
@@ -1572,7 +1598,7 @@ export default function MeseroPage() {
                   disabled={!puedeAgregar}
                   className="w-full bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white font-bold py-4 rounded-2xl text-lg shadow-lg shadow-orange-500/20 active:scale-95 transition"
                 >
-                  {faltaTipo ? 'Elige Alitas o Boneless' : faltaSalsasAlitas || faltaSalsasBoneless ? 'Elige los sabores' : `🛒 Agregar — $${precioTotal.toFixed(2)}`}
+                  {faltaTipo ? 'Elige Alitas o Boneless' : faltaSalsasAlitas || faltaSalsasBoneless ? 'Elige los sabores' : faltaRelleno ? '¿De qué las quieres?' : `🛒 Agregar — $${precioTotal.toFixed(2)}`}
                 </button>
               </div>
             </div>
