@@ -12,6 +12,7 @@ export const CATEGORIAS = [
   { id: 'desayunos', label: 'Desayunos', emoji: '🍳' },
   { id: 'comida', label: 'Comida', emoji: '🍽️' },
   { id: 'paquetes', label: 'Paquetes', emoji: '📦' },
+  { id: 'tortas', label: 'Tortas', emoji: '🫓' },
   { id: 'bebidas', label: 'Bebidas', emoji: '🥤' },
   { id: 'extras', label: 'Extras', emoji: '➕' },
 ] as const

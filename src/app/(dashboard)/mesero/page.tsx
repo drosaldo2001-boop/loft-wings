@@ -92,7 +92,7 @@ export default function MeseroPage() {
   const CATEGORIA_EMOJI: Record<string, string> = {
     alitas: '🍗', boneless: '🔥', hamburguesas: '🍔', ensaladas: '🥗',
     antojitos: '🌮', desayunos: '🍳', comida: '🍽️', paquetes: '📦',
-    bebidas: '🥤', extras: '➕',
+    tortas: '🫓', bebidas: '🥤', extras: '➕',
   }
 
   const fetchData = useCallback(async () => {
@@ -1331,10 +1331,11 @@ export default function MeseroPage() {
 
         // Validación para habilitar el botón Agregar
         const esFlauta = prod.nombre.toLowerCase().includes('flauta')
+        const esDelChavo = prod.nombre.toLowerCase().includes('chavo')
         const faltaTipo = esPaqueteConEleccion && !tipoKiosk
         const faltaSalsasAlitas = (mostrarSalsasAlitas || esMixto) && salsasKiosk.length === 0 && maxS > 0
         const faltaSalsasBoneless = (mostrarSalsasBoneless || esMixto) && salsasBonelessKiosk.length === 0 && maxS > 0
-        const faltaRelleno = esFlauta && !rellenoKiosk
+        const faltaRelleno = (esFlauta || esDelChavo) && !rellenoKiosk
         const puedeAgregar = !faltaTipo && !faltaSalsasAlitas && !faltaSalsasBoneless && !faltaRelleno
 
         return (
@@ -1488,6 +1489,73 @@ export default function MeseroPage() {
                           >{ing}</button>
                         )
                       })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Ingredientes torta (quitar) ── */}
+                {cat === 'tortas' && (
+                  <div>
+                    <p className="text-white font-bold mb-1">🥗 ¿Sin qué la quieres?</p>
+                    <p className="text-gray-500 text-xs mb-3">Toca lo que NO quieras</p>
+                    <div className="flex flex-wrap gap-2">
+                      {['Mayonesa', 'Aguacate', 'Lechuga', 'Cebolla', 'Queso'].map(ing => {
+                        const quitar = ingRemover.includes(ing)
+                        return (
+                          <button
+                            key={ing}
+                            onClick={() => setIngRemover(prev => quitar ? prev.filter(x => x !== ing) : [...prev, ing])}
+                            className={`px-3 py-1.5 rounded-full text-sm border transition active:scale-95 ${
+                              quitar
+                                ? 'bg-red-500/20 border-red-500/50 text-red-300 line-through'
+                                : 'bg-gray-800 border-gray-700 text-gray-300'
+                            }`}
+                          >{ing}</button>
+                        )
+                      })}
+                    </div>
+                    {/* Queso extra */}
+                    {(() => {
+                      const qExtra = { nombre: 'Queso extra', precio: 8 }
+                      const sel = extrasKiosk.some(e => e.nombre === qExtra.nombre)
+                      return (
+                        <button
+                          onClick={() => setExtrasKiosk(prev => sel ? prev.filter(e => e.nombre !== qExtra.nombre) : [...prev, qExtra])}
+                          className={`mt-3 w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition active:scale-95 ${
+                            sel ? 'bg-yellow-500/20 border-yellow-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-300'
+                          }`}
+                        >
+                          <span className="font-semibold">🧀 Queso extra</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-yellow-400 font-bold">+$8</span>
+                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${sel ? 'border-yellow-500 bg-yellow-500' : 'border-gray-500'}`}>
+                              {sel && <span className="text-white text-xs font-bold">✓</span>}
+                            </div>
+                          </div>
+                        </button>
+                      )
+                    })()}
+                  </div>
+                )}
+
+                {/* ── Relleno Del Chavo del Ocho ── */}
+                {esDelChavo && (
+                  <div>
+                    <p className="text-white font-bold mb-3">🌯 ¿Con qué la quieres? <span className="text-red-400 text-sm">*</span></p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {['Jamón', 'Queso de Puerco', 'Huevo'].map(op => (
+                        <button
+                          key={op}
+                          onClick={() => setRellenoKiosk(op)}
+                          className={`py-3 px-2 rounded-xl border-2 text-xs font-semibold text-center transition active:scale-95 ${
+                            rellenoKiosk === op
+                              ? 'border-orange-500 bg-orange-500/20 text-white'
+                              : 'border-gray-700 bg-gray-800 text-gray-300'
+                          }`}
+                        >
+                          {op === 'Jamón' ? '🍖' : op === 'Queso de Puerco' ? '🧀' : '🍳'}<br />{op}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}
