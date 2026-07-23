@@ -50,6 +50,16 @@ export default function MeseroPage() {
   const [nombreCuenta, setNombreCuenta] = useState('')
   const [numPersonas, setNumPersonas] = useState(1)
   const [cargando, setCargando] = useState(false)
+  const [cargandoMesas, setCargandoMesas] = useState(true)
+  // ── Kiosk modal ──
+  const [modalKiosk, setModalKiosk] = useState<Producto | null>(null)
+  const [tipoKiosk, setTipoKiosk] = useState<'alitas' | 'boneless' | null>(null)
+  const [salsasKiosk, setSalsasKiosk] = useState<string[]>([])
+  const [salsasBonelessKiosk, setSalsasBonelessKiosk] = useState<string[]>([])
+  const [cantidadKiosk, setCantidadKiosk] = useState(1)
+  const [notaKiosk, setNotaKiosk] = useState('')
+  const [ingRemover, setIngRemover] = useState<string[]>([])
+  const [extrasKiosk, setExtrasKiosk] = useState<ItemExtra[]>([])
   const [modalTipoBase, setModalTipoBase] = useState<{ producto: Producto } | null>(null)
   const [modalSalsas, setModalSalsas] = useState<{ producto: Producto; maxSalsas: number; tipo?: 'alitas' | 'boneless'; esMixto?: boolean } | null>(null)
   const [salsasSeleccionadas, setSalsasSeleccionadas] = useState<string[]>([])
@@ -78,7 +88,14 @@ export default function MeseroPage() {
   const chatRef = useRef<HTMLDivElement>(null)
   const user = getSession()
 
+  const CATEGORIA_EMOJI: Record<string, string> = {
+    alitas: '🍗', boneless: '🔥', hamburguesas: '🍔', ensaladas: '🥗',
+    antojitos: '🌮', desayunos: '🍳', comida: '🍽️', paquetes: '📦',
+    bebidas: '🥤', extras: '➕',
+  }
+
   const fetchData = useCallback(async () => {
+    setCargandoMesas(true)
     const [mesasRes, productosRes, promoRes] = await Promise.all([
       supabase.from('mesas').select('*').order('numero'),
       supabase.from('productos').select('*').eq('activo', true).order('categoria'),
@@ -90,6 +107,7 @@ export default function MeseroPage() {
     if (mesasRes.data) setMesas(mesasRes.data)
     if (productosRes.data) setProductos(productosRes.data)
     if (promoRes.data) setPromociones(promoRes.data as Promocion[])
+    setCargandoMesas(false)
   }, [])
 
   const fetchResumen = useCallback(async (fecha?: string) => {
@@ -401,6 +419,30 @@ export default function MeseroPage() {
     })
   }
 
+  function abrirKiosk(prod: Producto) {
+    setModalKiosk(prod); setTipoKiosk(null)
+    setSalsasKiosk([]); setSalsasBonelessKiosk([])
+    setCantidadKiosk(1); setNotaKiosk(''); setIngRemover([]); setExtrasKiosk([])
+  }
+
+  function confirmarKiosk() {
+    if (!modalKiosk) return
+    const prod = modalKiosk
+    const cat = prod.categoria as string
+    const esMixto = cat === 'paquetes' && ['Paquete 5', 'Paquete 6'].includes(prod.nombre)
+    const mods: string[] = []
+    if (tipoKiosk && !esMixto) mods.push(tipoKiosk === 'alitas' ? 'Alitas' : 'Boneless')
+    if (esMixto) {
+      salsasKiosk.forEach(s => mods.push(`Alitas: ${s}`))
+      salsasBonelessKiosk.forEach(s => mods.push(`Boneless: ${s}`))
+    } else {
+      salsasKiosk.forEach(s => mods.push(s))
+    }
+    ingRemover.forEach(ing => mods.push(`Sin ${ing}`))
+    setCarrito(prev => [...prev, { producto: prod, cantidad: cantidadKiosk, notas: notaKiosk, modificaciones: mods, extras: extrasKiosk }])
+    setModalKiosk(null)
+  }
+
   function quitarDelCarrito(idx: number) {
     setCarrito(prev => {
       const nuevo = [...prev]
@@ -585,6 +627,18 @@ export default function MeseroPage() {
       {vista === 'mesas' && (
         <div className="flex-1 overflow-auto p-4 space-y-4">
           <p className="text-gray-400 text-sm">Selecciona una mesa para atender</p>
+          {cargandoMesas ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-4">
+              <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+              <p className="text-gray-400 text-sm">Cargando mesas...</p>
+            </div>
+          ) : mesasVisibles.length === 0 ? (
+            <div className="text-center py-16">
+              <p className="text-5xl mb-3">🪑</p>
+              <p className="text-gray-400">No hay mesas disponibles</p>
+              <button onClick={fetchData} className="mt-4 px-4 py-2 bg-orange-500 text-white rounded-xl text-sm">Reintentar</button>
+            </div>
+          ) : null}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {mesasVisibles.map(mesa => (
               <button
@@ -864,34 +918,44 @@ export default function MeseroPage() {
             </button>
           </div>
 
-          {/* Productos normales */}
+          {/* Productos — grid visual kiosk */}
           {(categoriaActiva !== '__promos__' || busqueda.trim()) && (
-            <div className="flex-1 overflow-auto p-3 space-y-2">
+            <div className="flex-1 overflow-auto p-3">
               {productosFiltrados.length === 0 && (
                 <p className="text-gray-500 text-center py-12 text-sm">No se encontró "{busqueda}"</p>
               )}
-              {productosFiltrados.map(prod => (
-                <div key={prod.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 flex items-center gap-3">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium text-white text-sm">{prod.nombre}</p>
-                      {prod.es_popular && <span className="text-xs bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded-full">Popular</span>}
-                    </div>
-                    <p className="text-xs text-gray-500 mt-0.5">{prod.descripcion}</p>
-                    <div className="flex items-center gap-3 mt-1">
-                      <span className="text-orange-400 font-bold">${prod.precio}</span>
-                      <span className="text-xs text-gray-600">⏱ {prod.tiempo_prep_min} min</span>
-                      {prod.alergenos.length > 0 && (
-                        <span className="text-xs text-yellow-600">⚠️ {prod.alergenos.join(', ')}</span>
+              <div className="grid grid-cols-2 gap-3">
+                {productosFiltrados.map(prod => (
+                  <button
+                    key={prod.id}
+                    onClick={() => abrirKiosk(prod)}
+                    className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden text-left active:scale-95 transition hover:border-orange-500/50 hover:shadow-lg hover:shadow-orange-500/10"
+                  >
+                    {/* Imagen / emoji */}
+                    <div className="bg-gray-800 h-28 flex items-center justify-center relative">
+                      {prod.imagen_url ? (
+                        <img src={prod.imagen_url} alt={prod.nombre} className="h-full w-full object-cover" />
+                      ) : (
+                        <span className="text-5xl">{CATEGORIA_EMOJI[prod.categoria as string] ?? '🍽️'}</span>
+                      )}
+                      {prod.es_popular && (
+                        <span className="absolute top-2 right-2 bg-orange-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">⭐</span>
                       )}
                     </div>
-                  </div>
-                  <button
-                    onClick={() => clickAgregar(prod)}
-                    className="w-10 h-10 bg-orange-500 hover:bg-orange-600 rounded-xl text-white text-xl font-bold flex items-center justify-center transition active:scale-90"
-                  >+</button>
-                </div>
-              ))}
+                    {/* Info */}
+                    <div className="p-3">
+                      <p className="text-white font-semibold text-sm leading-tight line-clamp-2">{prod.nombre}</p>
+                      {prod.descripcion && (
+                        <p className="text-gray-500 text-xs mt-1 line-clamp-1">{prod.descripcion}</p>
+                      )}
+                      <div className="flex items-center justify-between mt-2">
+                        <span className="text-orange-400 font-bold text-base">${prod.precio}</span>
+                        <span className="w-7 h-7 bg-orange-500 rounded-lg flex items-center justify-center text-white text-base font-bold">+</span>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -1245,6 +1309,248 @@ export default function MeseroPage() {
           </div>
         </div>
       )}
+
+      {/* ══════════════════════════════════════════════════ */}
+      {/* ── MODAL KIOSK (menú visual estilo McDonald's) ── */}
+      {/* ══════════════════════════════════════════════════ */}
+      {modalKiosk && (() => {
+        const prod = modalKiosk
+        const cat = prod.categoria as string
+        const esMixto = cat === 'paquetes' && ['Paquete 5', 'Paquete 6'].includes(prod.nombre)
+        const esPaqueteConEleccion = cat === 'paquetes' && ['Paquete 1', 'Paquete 2', 'Paquete 3', 'Paquete 4', 'Paquete Niños'].includes(prod.nombre)
+        const necesitaSalsas = (cat === 'alitas' || cat === 'boneless' || cat === 'paquetes') && maxSalsasParaProducto(prod.nombre) > 0
+        const maxS = maxSalsasParaProducto(prod.nombre)
+        const mostrarSalsasAlitas = necesitaSalsas && (!esPaqueteConEleccion || tipoKiosk === 'alitas') && !esMixto
+        const mostrarSalsasBoneless = esPaqueteConEleccion && tipoKiosk === 'boneless'
+        const ingredientes = (prod.ingredientes ?? []) as string[]
+        const gruposExtras = (prod.grupos_opciones ?? []) as { nombre: string; opciones: { nombre: string; precio: number }[] }[]
+        const precioExtras = extrasKiosk.reduce((s, e) => s + e.precio, 0)
+        const precioTotal = ((prod.precio ?? 0) + precioExtras) * cantidadKiosk
+
+        // Validación para habilitar el botón Agregar
+        const faltaTipo = esPaqueteConEleccion && !tipoKiosk
+        const faltaSalsasAlitas = (mostrarSalsasAlitas || esMixto) && salsasKiosk.length === 0 && maxS > 0
+        const faltaSalsasBoneless = (mostrarSalsasBoneless || esMixto) && salsasBonelessKiosk.length === 0 && maxS > 0
+        const puedeAgregar = !faltaTipo && !faltaSalsasAlitas && !faltaSalsasBoneless
+
+        return (
+          <div className="fixed inset-0 bg-black/80 z-50 flex items-end">
+            <div className="bg-gray-950 w-full rounded-t-3xl max-h-[92vh] overflow-y-auto">
+              {/* Imagen grande */}
+              <div className="relative bg-gray-800 h-44 flex items-center justify-center rounded-t-3xl flex-shrink-0">
+                {prod.imagen_url
+                  ? <img src={prod.imagen_url} alt={prod.nombre} className="h-full w-full object-cover rounded-t-3xl" />
+                  : <span className="text-8xl">{CATEGORIA_EMOJI[cat] ?? '🍽️'}</span>
+                }
+                <button
+                  onClick={() => setModalKiosk(null)}
+                  className="absolute top-4 right-4 w-9 h-9 bg-black/50 rounded-full flex items-center justify-center text-white text-xl hover:bg-black/70 transition"
+                >✕</button>
+              </div>
+
+              <div className="p-5 space-y-5 pb-6">
+                {/* Nombre y precio */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <h2 className="text-xl font-bold text-white leading-tight">{prod.nombre}</h2>
+                    {prod.descripcion && <p className="text-gray-400 text-sm mt-1">{prod.descripcion}</p>}
+                  </div>
+                  <p className="text-orange-400 text-2xl font-bold whitespace-nowrap">${prod.precio}</p>
+                </div>
+
+                {/* ── Tipo: Alitas o Boneless ── */}
+                {esPaqueteConEleccion && (
+                  <div>
+                    <p className="text-white font-bold mb-3">
+                      {prod.nombre === 'Paquete Niños' ? '¿Nuggets o Boneless?' : '¿Alitas o Boneless?'}
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      {(prod.nombre === 'Paquete Niños' ? ['alitas', 'boneless'] : ['alitas', 'boneless']).map(tipo => (
+                        <button
+                          key={tipo}
+                          onClick={() => { setTipoKiosk(tipo as 'alitas' | 'boneless'); setSalsasKiosk([]) }}
+                          className={`py-4 rounded-2xl border-2 text-center transition active:scale-95 ${
+                            tipoKiosk === tipo ? 'border-orange-500 bg-orange-500/20' : 'border-gray-700 bg-gray-900'
+                          }`}
+                        >
+                          <span className="text-3xl block mb-1">{tipo === 'alitas' ? '🍗' : '🍖'}</span>
+                          <p className="text-white font-semibold text-sm capitalize">
+                            {prod.nombre === 'Paquete Niños' && tipo === 'alitas' ? 'Nuggets' : tipo === 'alitas' ? 'Alitas' : 'Boneless'}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Salsas Alitas ── */}
+                {(mostrarSalsasAlitas || esMixto) && (
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-white font-bold">{esMixto ? '🍗 Sabores Alitas' : '🌶️ Elige tu sabor'}</p>
+                      <span className={`text-sm font-bold px-2 py-1 rounded-full ${salsasKiosk.length === maxS ? 'bg-green-500/20 text-green-400' : 'bg-gray-800 text-gray-400'}`}>
+                        {salsasKiosk.length}/{maxS}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {SALSAS_ALITAS.map(salsa => {
+                        const sel = salsasKiosk.includes(salsa)
+                        return (
+                          <button
+                            key={salsa}
+                            disabled={!sel && salsasKiosk.length >= maxS}
+                            onClick={() => setSalsasKiosk(prev => sel ? prev.filter(s => s !== salsa) : [...prev, salsa])}
+                            className={`py-2.5 px-3 rounded-xl text-sm font-medium transition active:scale-95 ${
+                              sel ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-300 border border-gray-700'
+                            } disabled:opacity-30`}
+                          >{salsa}</button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Salsas Boneless (paquete mixto P5/P6) ── */}
+                {esMixto && (
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-white font-bold">🔥 Sabores Boneless</p>
+                      <span className={`text-sm font-bold px-2 py-1 rounded-full ${salsasBonelessKiosk.length === maxS ? 'bg-green-500/20 text-green-400' : 'bg-gray-800 text-gray-400'}`}>
+                        {salsasBonelessKiosk.length}/{maxS}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {SALSAS_ALITAS.map(salsa => {
+                        const sel = salsasBonelessKiosk.includes(salsa)
+                        return (
+                          <button
+                            key={salsa}
+                            disabled={!sel && salsasBonelessKiosk.length >= maxS}
+                            onClick={() => setSalsasBonelessKiosk(prev => sel ? prev.filter(s => s !== salsa) : [...prev, salsa])}
+                            className={`py-2.5 px-3 rounded-xl text-sm font-medium transition active:scale-95 ${
+                              sel ? 'bg-red-500 text-white' : 'bg-gray-800 text-gray-300 border border-gray-700'
+                            } disabled:opacity-30`}
+                          >{salsa}</button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Salsas Boneless (paquete con elección tipo boneless) ── */}
+                {mostrarSalsasBoneless && (
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-white font-bold">🔥 Sabor Boneless</p>
+                      <span className={`text-sm font-bold px-2 py-1 rounded-full ${salsasKiosk.length === maxS ? 'bg-green-500/20 text-green-400' : 'bg-gray-800 text-gray-400'}`}>
+                        {salsasKiosk.length}/{maxS}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {SALSAS_ALITAS.map(salsa => {
+                        const sel = salsasKiosk.includes(salsa)
+                        return (
+                          <button
+                            key={salsa}
+                            disabled={!sel && salsasKiosk.length >= maxS}
+                            onClick={() => setSalsasKiosk(prev => sel ? prev.filter(s => s !== salsa) : [...prev, salsa])}
+                            className={`py-2.5 px-3 rounded-xl text-sm font-medium transition active:scale-95 ${
+                              sel ? 'bg-red-500 text-white' : 'bg-gray-800 text-gray-300 border border-gray-700'
+                            } disabled:opacity-30`}
+                          >{salsa}</button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Sin ingredientes ── */}
+                {ingredientes.length > 0 && (
+                  <div>
+                    <p className="text-white font-bold mb-1">🥗 Ingredientes</p>
+                    <p className="text-gray-500 text-xs mb-3">Toca lo que NO quieras</p>
+                    <div className="flex flex-wrap gap-2">
+                      {ingredientes.map(ing => {
+                        const quitar = ingRemover.includes(ing)
+                        return (
+                          <button
+                            key={ing}
+                            onClick={() => setIngRemover(prev => quitar ? prev.filter(x => x !== ing) : [...prev, ing])}
+                            className={`px-3 py-1.5 rounded-full text-sm border transition active:scale-95 ${
+                              quitar
+                                ? 'bg-red-500/20 border-red-500/50 text-red-300 line-through'
+                                : 'bg-gray-800 border-gray-700 text-gray-300'
+                            }`}
+                          >{ing}</button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Extras ── */}
+                {gruposExtras.map(grupo => (
+                  <div key={grupo.nombre}>
+                    <p className="text-white font-bold mb-3">➕ {grupo.nombre}</p>
+                    <div className="space-y-2">
+                      {grupo.opciones.map(op => {
+                        const sel = extrasKiosk.some(e => e.nombre === op.nombre)
+                        return (
+                          <button
+                            key={op.nombre}
+                            onClick={() => setExtrasKiosk(prev => sel ? prev.filter(e => e.nombre !== op.nombre) : [...prev, op])}
+                            className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition active:scale-95 ${
+                              sel ? 'bg-orange-500/15 border-orange-500/50 text-white' : 'bg-gray-800 border-gray-700 text-gray-300'
+                            }`}
+                          >
+                            <span className="font-medium">{op.nombre}</span>
+                            <div className="flex items-center gap-2">
+                              {op.precio > 0 && <span className="text-orange-400 text-sm">+${op.precio}</span>}
+                              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${sel ? 'border-orange-500 bg-orange-500' : 'border-gray-500'}`}>
+                                {sel && <span className="text-white text-xs font-bold">✓</span>}
+                              </div>
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+
+                {/* ── Cantidad ── */}
+                <div className="flex items-center justify-between bg-gray-900 rounded-2xl p-4">
+                  <p className="text-white font-bold">Cantidad</p>
+                  <div className="flex items-center gap-4">
+                    <button onClick={() => setCantidadKiosk(c => Math.max(1, c - 1))}
+                      className="w-10 h-10 bg-gray-800 hover:bg-gray-700 rounded-full text-white text-xl font-bold flex items-center justify-center transition active:scale-90">−</button>
+                    <span className="text-white font-bold text-xl w-6 text-center">{cantidadKiosk}</span>
+                    <button onClick={() => setCantidadKiosk(c => c + 1)}
+                      className="w-10 h-10 bg-orange-500 hover:bg-orange-600 rounded-full text-white text-xl font-bold flex items-center justify-center transition active:scale-90">+</button>
+                  </div>
+                </div>
+
+                {/* ── Nota ── */}
+                <input
+                  type="text"
+                  value={notaKiosk}
+                  onChange={e => setNotaKiosk(e.target.value)}
+                  placeholder="📝 Notas especiales (opcional)..."
+                  className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-orange-500"
+                />
+
+                {/* ── Botón agregar ── */}
+                <button
+                  onClick={confirmarKiosk}
+                  disabled={!puedeAgregar}
+                  className="w-full bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white font-bold py-4 rounded-2xl text-lg shadow-lg shadow-orange-500/20 active:scale-95 transition"
+                >
+                  {faltaTipo ? 'Elige Alitas o Boneless' : faltaSalsasAlitas || faltaSalsasBoneless ? 'Elige los sabores' : `🛒 Agregar — $${precioTotal.toFixed(2)}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── Modal elección Alitas/Nuggets o Boneless ── */}
       {modalTipoBase && (
