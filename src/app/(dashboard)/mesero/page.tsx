@@ -1488,6 +1488,34 @@ export default function MeseroPage() {
                   </div>
                 )}
 
+                {/* ── Papas a la francesa (hamburguesas) ── */}
+                {cat === 'hamburguesas' && (() => {
+                  const papas = { nombre: 'Papas a la francesa', precio: 30 }
+                  const sel = extrasKiosk.some(e => e.nombre === papas.nombre)
+                  return (
+                    <div>
+                      <p className="text-white font-bold mb-3">🍟 ¿Le agregamos algo?</p>
+                      <button
+                        onClick={() => setExtrasKiosk(prev => sel ? prev.filter(e => e.nombre !== papas.nombre) : [...prev, papas])}
+                        className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl border-2 transition active:scale-95 ${
+                          sel ? 'bg-yellow-500/20 border-yellow-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">🍟</span>
+                          <span className="font-semibold">Papas a la francesa</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-yellow-400 font-bold">+$30</span>
+                          <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition ${sel ? 'border-yellow-500 bg-yellow-500' : 'border-gray-500'}`}>
+                            {sel && <span className="text-white text-xs font-bold">✓</span>}
+                          </div>
+                        </div>
+                      </button>
+                    </div>
+                  )
+                })()}
+
                 {/* ── Extras ── */}
                 {gruposExtras.map(grupo => (
                   <div key={grupo.nombre}>
