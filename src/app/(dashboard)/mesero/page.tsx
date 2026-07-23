@@ -79,14 +79,17 @@ export default function MeseroPage() {
   const user = getSession()
 
   const fetchData = useCallback(async () => {
-    const [{ data: mesasData }, { data: productosData }, { data: promoData }] = await Promise.all([
+    const [mesasRes, productosRes, promoRes] = await Promise.all([
       supabase.from('mesas').select('*').order('numero'),
       supabase.from('productos').select('*').eq('activo', true).order('categoria'),
       supabase.from('promociones').select('*').eq('activa', true).order('dia_semana'),
     ])
-    if (mesasData) setMesas(mesasData)
-    if (productosData) setProductos(productosData)
-    if (promoData) setPromociones(promoData as Promocion[])
+    if (mesasRes.error) console.error('Error cargando mesas:', mesasRes.error.message)
+    if (productosRes.error) console.error('Error cargando productos:', productosRes.error.message)
+    if (promoRes.error) console.error('Error cargando promociones:', promoRes.error.message)
+    if (mesasRes.data) setMesas(mesasRes.data)
+    if (productosRes.data) setProductos(productosRes.data)
+    if (promoRes.data) setPromociones(promoRes.data as Promocion[])
   }, [])
 
   const fetchResumen = useCallback(async (fecha?: string) => {
@@ -110,7 +113,13 @@ export default function MeseroPage() {
     setCargandoResumen(false)
   }, [])
 
-  useEffect(() => { fetchData() }, [fetchData])
+  useEffect(() => {
+    fetchData()
+    const channel = supabase.channel('mesero_mesas')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mesas' }, fetchData)
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [fetchData])
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight
   }, [mensajesIA])
